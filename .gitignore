@@ -6,6 +6,7 @@ node_modules/
 dist/
 release/
 project/
+/*.exe
 
 # Local Electron data
 *.db
