@@ -2,7 +2,7 @@
 
 ## Direction
 
-DesktopDock uses the selected **C · Windows 原生** direction. The interface should feel like a focused Windows 11 utility: content-first, keyboard-friendly, compact, and predictable. Win10 receives solid-surface fallbacks rather than simulated blur.
+DesktopDock uses the selected **C · Windows 原生** direction as a right-edge desktop status bar. It should feel like a native Windows 11 companion surface rather than a conventional application window: glanceable, keyboard-friendly, compact, and predictable. Win10 receives solid-surface fallbacks rather than simulated blur.
 
 ## Mode
 
@@ -48,19 +48,20 @@ Use `Segoe UI Variable`, `Segoe UI`, and `Microsoft YaHei UI`. Page titles are 2
 
 ## Layout
 
-- Title bar: 42px.
-- Primary navigation: 152px, collapses to 62px below 800px.
-- Command bar: 52px.
-- Content padding: 24px desktop, 16px compact.
-- Frequent applications: stable eight-item grid.
-- Category content: repeated category items may use restrained bordered cards; page sections remain unframed.
+- Production surface: fixed 392px width, positioned against the active display's right work-area edge.
+- Status header: 48px with product state, clock, refresh, and tray-hide actions.
+- Search: always available directly under the status header.
+- Content: vertically scrollable desktop, application, file, and settings modules.
+- Navigation: four-item bottom module switcher; no large sidebar or conventional command bar.
+- Desktop shortcuts: four-column grid with progressive Shell icon hydration.
 
 ## Interaction
 
 - `Alt+Space` opens search; `Esc` closes; arrow keys move selection; `Enter` opens the selected result; `Tab` switches result type only while the search input is focused.
 - Active navigation uses both an accent rail and a surface change.
 - Focus rings remain visible on every operable control.
-- Desktop organization always previews changes, creates a restore point by default, reports progress, and offers undo after completion.
+- Consequential organization actions use a focused confirmation inside the status bar, create a restore point, report completion, and offer restoration.
+- Closing the surface hides it to the tray; only the explicit settings action exits the process.
 - Drag-based product capabilities must also have menu or button alternatives.
 
 ## Motion
@@ -72,5 +73,4 @@ Use `Segoe UI Variable`, `Segoe UI`, and `Microsoft YaHei UI`. Page titles are 2
 
 ## Responsive Behavior
 
-The shipped target is a resizable Windows desktop window with a 720px minimum width. Below 800px the navigation becomes icon-only and content grids reduce columns. A narrow web preview remains operable for review, but it does not redefine the product as a mobile app.
-
+The shipped target is a fixed-width Windows desktop status bar. Its height follows the active display work area between 560px and 920px, while internal content scrolls without horizontal overflow. The browser preview uses the same narrow composition.

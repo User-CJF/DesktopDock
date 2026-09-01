@@ -1,7 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } = require('electron');
 const { createAppIndex } = require('./services/app-index.cjs');
 const { createIconCache } = require('./services/icon-cache.cjs');
 const { createFileIndex } = require('./services/file-index.cjs');
@@ -16,8 +16,11 @@ if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
 }
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 let appIndex = null;
 let iconCache = null;
+let shortcutIconCache = null;
 let fileIndex = null;
 let desktopOrganizer = null;
 let settingsStore = null;
@@ -25,6 +28,65 @@ const shortcutRegistration = {
   search: { requested: 'Alt+Space', active: null },
   toggleWindow: { requested: 'Alt+D', active: null },
 };
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  mainWindow.show();
+  mainWindow.focus();
+});
+
+function expandWindowsEnvironment(value) {
+  return value.replace(/%([^%]+)%/g, (match, key) => process.env[key] || match);
+}
+
+function normalizedIconPath(value) {
+  if (typeof value !== 'string') return null;
+  const cleaned = expandWindowsEnvironment(value.trim().replace(/^"|"$/g, '')).replace(/,\s*-?\d+$/, '');
+  return cleaned ? path.resolve(cleaned) : null;
+}
+
+async function resolvedFileIcon(target) {
+  const candidates = [];
+  const extension = path.extname(target).toLowerCase();
+  if (extension === '.lnk') {
+    try {
+      const details = shell.readShortcutLink(target);
+      const explicitIcon = normalizedIconPath(details.icon);
+      const resolvedTarget = normalizedIconPath(details.target);
+      if (explicitIcon) candidates.push({ path: explicitIcon, directImage: path.extname(explicitIcon).toLowerCase() === '.ico' });
+      if (resolvedTarget) candidates.push({ path: resolvedTarget, directImage: false });
+    } catch {
+      // Invalid shortcuts fall back to the shortcut file itself.
+    }
+  } else if (extension === '.url') {
+    try {
+      const contents = await fs.promises.readFile(target, 'utf8');
+      const explicitIcon = normalizedIconPath(contents.match(/^IconFile=(.+)$/mi)?.[1]);
+      if (explicitIcon) candidates.push({ path: explicitIcon, directImage: path.extname(explicitIcon).toLowerCase() === '.ico' });
+    } catch {
+      // URL files without an icon declaration use the Shell fallback.
+    }
+  }
+  candidates.push({ path: target, directImage: path.extname(target).toLowerCase() === '.ico' });
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const key = candidate.path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      await fs.promises.access(candidate.path, fs.constants.R_OK);
+      const image = candidate.directImage
+        ? nativeImage.createFromPath(candidate.path)
+        : await app.getFileIcon(candidate.path, { size: 'large' });
+      if (image && !image.isEmpty()) return image;
+    } catch {
+      // Try the next trustworthy icon source.
+    }
+  }
+  return null;
+}
 
 async function runSmokeTest(window) {
   try {
@@ -44,6 +106,8 @@ async function runSmokeTest(window) {
       const fileScan = await window.desktopDock.files.rescan();
       const fileStatus = await window.desktopDock.files.status();
       const desktopPreview = await window.desktopDock.desktop.scan();
+      const shortcutTarget = desktopPreview.shortcutItems?.[0];
+      const shortcutIcon = shortcutTarget ? await window.desktopDock.desktop.shortcutIcon(shortcutTarget.id) : null;
       const originalSettings = await window.desktopDock.settings.get();
       const settingMutation = await window.desktopDock.settings.set('searchResultCount', 11);
       const settingPersisted = (await window.desktopDock.settings.get()).searchResultCount === 11;
@@ -78,6 +142,9 @@ async function runSmokeTest(window) {
         categoryCrud: pinned.success && created.success && moved.success && updated.success && deleted.success && categoryPersisted && returnedToOther,
         fileBridge: fileRoots.length >= 5 && fileStatus.totalRoots === fileRoots.length && fileScan.total === fileStatus.totalFiles,
         organizerPreviewSafe: Number.isInteger(desktopPreview.total) && Number.isInteger(desktopPreview.folders),
+        shortcutBridgeSafe: Array.isArray(desktopPreview.shortcutItems)
+          && desktopPreview.shortcutItems.every((item) => !('fullPath' in item) && !('fileName' in item)),
+        shortcutIconAvailable: !shortcutTarget || (typeof shortcutIcon === 'string' && shortcutIcon.startsWith('data:image/png;base64,')),
         settingsPersistence: settingMutation.success && settingPersisted,
         aboutVersion: about.version === '0.1.0' && about.updateSourceConfigured === false,
         iconDataAvailable: typeof firstIcon === 'string' && firstIcon.startsWith('data:image/png;base64,'),
@@ -126,8 +193,9 @@ async function runSmokeTest(window) {
     result.organizePage = await window.webContents.executeJavaScript(`(() => {
       document.querySelector('#primaryNav [data-nav="organize"]')?.click();
       return document.querySelector('#commandbar h1')?.textContent === '桌面整理'
-        && document.querySelectorAll('#pageContent .organize-row').length === 6
-        && document.querySelector('#pageContent')?.textContent.includes('文件夹和快捷方式不会被移动');
+        && document.querySelectorAll('#pageContent .organize-row').length === 5
+        && Boolean(document.querySelector('#pageContent .shortcut-section'))
+        && document.querySelector('#pageContent')?.textContent.includes('只移动当前用户桌面的快捷方式');
     })()`);
     await new Promise((resolve) => setTimeout(resolve, 180));
     const organizeScreenshot = await window.webContents.capturePage();
@@ -152,28 +220,145 @@ async function runSmokeTest(window) {
       && result.categoriesRendered && result.noHorizontalOverflow && result.minimumWindowNoOverflow
       && result.indexedApps > 0 && result.indexStatusMatches
       && result.categoryCountMatches && result.categoryCrud
-      && result.fileBridge && result.organizerPreviewSafe && result.settingsPersistence && result.aboutVersion
+      && result.fileBridge && result.organizerPreviewSafe && result.shortcutBridgeSafe && result.shortcutIconAvailable
+      && result.settingsPersistence && result.aboutVersion
       && result.categoryForm && result.categoryPicker
       && result.filesPage && result.organizePage && result.settingsPage
       && result.iconDataAvailable && result.iconCacheStable && result.realIconRendered
       && result.shortcuts.search.active && result.shortcuts.toggleWindow.active;
     console.log(`DesktopDock smoke test: ${JSON.stringify(result)}`);
+    if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
+      fs.writeFileSync(process.env.DESKTOPDOCK_SMOKE_RESULT, JSON.stringify({ passed, result }, null, 2), 'utf8');
+    }
     app.exit(passed ? 0 : 1);
   } catch (error) {
     console.error('DesktopDock smoke test failed:', error);
+    if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
+      fs.writeFileSync(process.env.DESKTOPDOCK_SMOKE_RESULT, JSON.stringify({ passed: false, error: error.message }, null, 2), 'utf8');
+    }
+    app.exit(1);
+  }
+}
+
+function smokeArtifactPath(fileName) {
+  const directory = process.env.DESKTOPDOCK_SMOKE_RESULT
+    ? path.dirname(process.env.DESKTOPDOCK_SMOKE_RESULT)
+    : path.join(process.cwd(), 'dist');
+  fs.mkdirSync(directory, { recursive: true });
+  return path.join(directory, fileName);
+}
+
+async function runSidebarSmokeTest(window) {
+  try {
+    const result = await window.webContents.executeJavaScript(`(async () => {
+      const waitUntil = async (predicate, timeout = 12000) => {
+        const started = performance.now();
+        while (!predicate()) {
+          if (performance.now() - started > timeout) return false;
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+        return true;
+      };
+      const loaded = await waitUntil(() => document.querySelector('#dockStatus')?.textContent.includes('已就绪'));
+      const root = document.querySelector('.dock-shell');
+      const nav = [...document.querySelectorAll('#dockNav [data-view]')];
+      const apps = await window.desktopDock.apps.list({ size: 500 });
+      const index = await window.desktopDock.index.getStatus();
+      const desktop = await window.desktopDock.desktop.scan();
+      const files = await window.desktopDock.files.list(30);
+      const settings = await window.desktopDock.settings.get();
+      const originalResultCount = settings.searchResultCount;
+      const mutation = await window.desktopDock.settings.set('searchResultCount', 11);
+      const persisted = (await window.desktopDock.settings.get()).searchResultCount === 11;
+      await window.desktopDock.settings.set('searchResultCount', originalResultCount);
+      const appTarget = apps[0];
+      const appIcon = appTarget ? await window.desktopDock.apps.icon(appTarget.id) : null;
+      const shortcutTarget = desktop.shortcutItems?.[0];
+      const shortcutIcon = shortcutTarget ? await window.desktopDock.desktop.shortcutIcon(shortcutTarget.id) : null;
+      document.querySelector('#dockNav [data-view="apps"]')?.click();
+      const appsView = document.querySelector('#dockContent .app-grid') && document.querySelectorAll('#dockContent [data-app]').length > 0;
+      document.querySelector('#dockNav [data-view="files"]')?.click();
+      const filesView = document.querySelector('#dockContent .file-list') || document.querySelector('#dockContent .empty-state');
+      document.querySelector('#dockNav [data-view="settings"]')?.click();
+      const settingsView = document.querySelectorAll('#dockContent [data-setting]').length >= 3;
+      document.querySelector('#dockNav [data-view="desktop"]')?.click();
+      const desktopView = Boolean(document.querySelector('#dockContent .shortcut-module') && document.querySelector('#dockContent .desktop-meter'));
+      const search = document.querySelector('#dockSearch');
+      search.value = appTarget?.name || 'test';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      const searchReady = await waitUntil(() => document.querySelector('#dockSearchResults')?.hidden === false, 4000);
+      return {
+        loaded,
+        bridge: window.desktopDock?.isElectron === true,
+        navCount: nav.length,
+        compactWidth: root?.getBoundingClientRect().width <= 400,
+        noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        appsIndexed: apps.length > 0 && index.totalApps === apps.length,
+        shortcutBridgeSafe: Array.isArray(desktop.shortcutItems) && desktop.shortcutItems.every((item) => !('fullPath' in item) && !('fileName' in item)),
+        filesBridge: Array.isArray(files),
+        settingsPersistence: mutation.success && persisted,
+        appIcon: !appTarget || (typeof appIcon === 'string' && appIcon.startsWith('data:image/png;base64,')),
+        shortcutIcon: !shortcutTarget || (typeof shortcutIcon === 'string' && shortcutIcon.startsWith('data:image/png;base64,')),
+        appsView: Boolean(appsView),
+        filesView: Boolean(filesView),
+        settingsView,
+        desktopView,
+        searchReady,
+        shortcutCountRendered: document.querySelectorAll('#dockContent [data-shortcut]').length,
+      };
+    })()`);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    const searchScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-sidebar-search.png'), searchScreenshot.toPNG());
+    await window.webContents.executeJavaScript(`(() => {
+      const input = document.querySelector('#dockSearch');
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('#dockSearchResults').hidden = true;
+      document.querySelector('#dockNav [data-view="desktop"]')?.click();
+    })()`);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    const desktopScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-sidebar-desktop.png'), desktopScreenshot.toPNG());
+    await window.webContents.executeJavaScript("document.querySelector('#dockNav [data-view=\"settings\"]')?.click()");
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const settingsScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-sidebar-settings.png'), settingsScreenshot.toPNG());
+    const passed = Object.entries(result).every(([key, value]) => key === 'shortcutCountRendered' ? value >= 0 : Boolean(value));
+    console.log(`DesktopDock sidebar smoke test: ${JSON.stringify(result)}`);
+    if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
+      fs.writeFileSync(process.env.DESKTOPDOCK_SMOKE_RESULT, JSON.stringify({ passed, result }, null, 2), 'utf8');
+    }
+    app.exit(passed ? 0 : 1);
+  } catch (error) {
+    console.error('DesktopDock sidebar smoke test failed:', error);
+    if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
+      fs.writeFileSync(process.env.DESKTOPDOCK_SMOKE_RESULT, JSON.stringify({ passed: false, error: error.message }, null, 2), 'utf8');
+    }
     app.exit(1);
   }
 }
 
 function createMainWindow() {
   const isSmokeTest = process.env.DESKTOPDOCK_SMOKE_TEST === '1';
+  const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = 392;
+  const height = Math.min(920, Math.max(560, workArea.height - 24));
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 720,
-    minWidth: 720,
-    minHeight: 520,
+    width,
+    height,
+    x: workArea.x + workArea.width - width - 12,
+    y: workArea.y + 12,
+    minWidth: width,
+    minHeight: 560,
+    maxWidth: width,
     show: false,
     frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    skipTaskbar: !isSmokeTest,
+    alwaysOnTop: !isSmokeTest,
     backgroundColor: isSmokeTest ? '#f3f3f3' : '#00000000',
     backgroundMaterial: process.platform === 'win32' && !isSmokeTest ? 'mica' : 'none',
     webPreferences: {
@@ -205,14 +390,51 @@ function createMainWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    if (!settingsStore?.get().startMinimized || process.env.DESKTOPDOCK_SMOKE_TEST === '1') mainWindow?.show();
-    if (process.env.DESKTOPDOCK_SMOKE_TEST === '1' && mainWindow) void runSmokeTest(mainWindow);
+    const requestedHiddenStart = process.argv.includes('--hidden');
+    if ((!settingsStore?.get().startMinimized && !requestedHiddenStart) || process.env.DESKTOPDOCK_SMOKE_TEST === '1') mainWindow?.show();
+    if (process.env.DESKTOPDOCK_SMOKE_TEST === '1' && mainWindow) void runSidebarSmokeTest(mainWindow);
+  });
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 function currentWindow(event) {
   return BrowserWindow.fromWebContents(event.sender);
+}
+
+function positionDockWindow() {
+  if (!mainWindow) return;
+  const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const [width, height] = mainWindow.getSize();
+  mainWindow.setPosition(workArea.x + workArea.width - width - 12, workArea.y + Math.max(8, Math.trunc((workArea.height - height) / 2)));
+}
+
+async function createTray() {
+  if (tray || process.env.DESKTOPDOCK_SMOKE_TEST === '1') return;
+  let image = await app.getFileIcon(process.execPath, { size: 'small' }).catch(() => nativeImage.createEmpty());
+  if (image.isEmpty()) image = nativeImage.createFromPath(process.execPath);
+  tray = new Tray(image.resize({ width: 16, height: 16 }));
+  tray.setToolTip('桌面舱 DesktopDock');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示桌面舱', click: () => { positionDockWindow(); mainWindow?.show(); mainWindow?.focus(); } },
+    { label: '隐藏桌面舱', click: () => mainWindow?.hide() },
+    { type: 'separator' },
+    { label: '退出', click: () => { isQuitting = true; app.quit(); } },
+  ]));
+  tray.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) mainWindow.hide();
+    else {
+      positionDockWindow();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 function registerIpc() {
@@ -232,6 +454,11 @@ function registerIpc() {
     return window.isMaximized();
   });
   ipcMain.handle('dd:window:close', (event) => currentWindow(event)?.close());
+  ipcMain.handle('dd:window:hide', (event) => currentWindow(event)?.hide());
+  ipcMain.handle('dd:window:quit', () => {
+    isQuitting = true;
+    app.quit();
+  });
   ipcMain.handle('dd:theme:get', () => nativeTheme.themeSource);
   ipcMain.handle('dd:theme:set', (_event, theme) => {
     if (!['light', 'dark', 'system'].includes(theme)) throw new Error('Unsupported theme value');
@@ -293,6 +520,22 @@ function registerIpc() {
   ipcMain.handle('dd:desktop:organize', async () => desktopOrganizer.organize());
   ipcMain.handle('dd:desktop:restore-last', async () => desktopOrganizer.restoreLast());
   ipcMain.handle('dd:desktop:restore-points', async () => desktopOrganizer.restorePoints());
+  ipcMain.handle('dd:desktop:shortcut-icon', (_event, payload = {}) => shortcutIconCache.get(payload.shortcutId));
+  ipcMain.handle('dd:desktop:shortcut-launch', (_event, payload = {}) => desktopOrganizer.launchShortcut(payload.shortcutId, (target) => shell.openPath(target)));
+  ipcMain.handle('dd:desktop:shortcut-stow', async () => {
+    const result = await desktopOrganizer.stowShortcuts();
+    appIndex.relocatePaths(result.movements, 'desktop_vault');
+    await appIndex.rescan();
+    mainWindow?.webContents.send('dd:index:updated', appIndex.status());
+    return { success: true, stowed: result.stowed };
+  });
+  ipcMain.handle('dd:desktop:shortcut-restore', async () => {
+    const result = await desktopOrganizer.restoreShortcuts();
+    appIndex.relocatePaths(result.movements, 'desktop_user');
+    await appIndex.rescan();
+    mainWindow?.webContents.send('dd:index:updated', appIndex.status());
+    return { success: true, restored: result.restored, conflicts: result.conflicts };
+  });
   ipcMain.handle('dd:settings:get', () => settingsStore.get());
   ipcMain.handle('dd:settings:set', (_event, payload = {}) => mutation(() => {
     const result = settingsStore.set(payload.key, payload.value);
@@ -334,10 +577,10 @@ function registerIpc() {
 function applySetting(key, value) {
   if (key === 'theme') nativeTheme.themeSource = value;
   if (key === 'autoStart' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
-    app.setLoginItemSettings({ openAtLogin: value, openAsHidden: settingsStore.get().startMinimized });
+    app.setLoginItemSettings(loginItemSettings(value, settingsStore.get().startMinimized));
   }
   if (key === 'startMinimized' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
-    app.setLoginItemSettings({ openAtLogin: settingsStore.get().autoStart, openAsHidden: value });
+    app.setLoginItemSettings(loginItemSettings(settingsStore.get().autoStart, value));
   }
   if (key === 'hotkeySearch' || key === 'hotkeyMain') registerShortcuts();
 }
@@ -345,17 +588,30 @@ function applySetting(key, value) {
 function applyAllSettings(settings) {
   nativeTheme.themeSource = settings.theme;
   if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
-    app.setLoginItemSettings({ openAtLogin: settings.autoStart, openAsHidden: settings.startMinimized });
+    app.setLoginItemSettings(loginItemSettings(settings.autoStart, settings.startMinimized));
   }
   registerShortcuts();
 }
 
-function applicationRoots() {
+function loginItemSettings(openAtLogin, startMinimized) {
+  const portableExecutable = process.env.PORTABLE_EXECUTABLE_FILE;
+  if (portableExecutable) {
+    return {
+      openAtLogin,
+      path: portableExecutable,
+      args: startMinimized ? ['--hidden'] : [],
+    };
+  }
+  return { openAtLogin, openAsHidden: startMinimized };
+}
+
+function applicationRoots(shortcutVaultDirectory) {
   const roots = [
     { source: 'start_menu_user', directory: path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs') },
     { source: 'start_menu_public', directory: path.join(process.env.ProgramData || 'C:\\ProgramData', 'Microsoft', 'Windows', 'Start Menu', 'Programs') },
     { source: 'desktop_user', directory: app.getPath('desktop') },
     { source: 'desktop_public', directory: path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop') },
+    { source: 'desktop_vault', directory: shortcutVaultDirectory },
   ];
   const seen = new Set();
   return roots.filter((root) => {
@@ -419,13 +675,15 @@ function registerShortcuts() {
 app.whenReady().then(async () => {
   if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') console.log('DesktopDock smoke: app ready');
   const databasePath = path.join(app.getPath('userData'), 'data.db');
-  appIndex = createAppIndex(databasePath, applicationRoots());
+  const shortcutVaultDirectory = path.join(app.getPath('userData'), 'desktop-shortcuts');
+  appIndex = createAppIndex(databasePath, applicationRoots(shortcutVaultDirectory));
   fileIndex = createFileIndex(databasePath, fileRoots());
   settingsStore = createSettingsStore(databasePath);
   desktopOrganizer = createDesktopOrganizer({
     desktopDirectory: app.getPath('desktop'),
     additionalScanDirectories: [path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop')],
     restoreDirectory: path.join(app.getPath('userData'), 'restore-points'),
+    shortcutVaultDirectory,
     destinations: {
       documents: path.join(app.getPath('documents'), '桌面整理'),
       images: path.join(app.getPath('pictures'), '桌面整理'),
@@ -435,18 +693,26 @@ app.whenReady().then(async () => {
     },
   });
   iconCache = createIconCache(
-    path.join(app.getPath('userData'), 'icon-cache'),
-    (target) => app.getFileIcon(target, { size: 'large' }),
+    path.join(app.getPath('userData'), 'icon-cache-v3'),
+    resolvedFileIcon,
     (appId) => appIndex.iconSource(appId),
+  );
+  shortcutIconCache = createIconCache(
+    path.join(app.getPath('userData'), 'shortcut-icon-cache-v2'),
+    resolvedFileIcon,
+    (shortcutId) => desktopOrganizer.shortcutIconSource(shortcutId),
+    { idPattern: /^shortcut_[a-f0-9]{20}$/ },
   );
   registerIpc();
   try {
     await appIndex.rescan();
+    await desktopOrganizer.listShortcuts();
   } catch (error) {
     console.error('DesktopDock application scan failed:', error);
   }
   if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') console.log('DesktopDock smoke: application index ready');
   createMainWindow();
+  await createTray();
   applyAllSettings(settingsStore.get());
   void fileIndex.rescan().then(() => mainWindow?.webContents.send('dd:file-index:updated', fileIndex.status())).catch((error) => {
     console.error('DesktopDock file scan failed:', error);
@@ -458,9 +724,15 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    else {
+      positionDockWindow();
+      mainWindow?.show();
+    }
   });
+  screen.on('display-metrics-changed', () => positionDockWindow());
 });
 
+app.on('before-quit', () => { isQuitting = true; });
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   appIndex?.close();
@@ -468,10 +740,13 @@ app.on('will-quit', () => {
   settingsStore?.close();
   appIndex = null;
   iconCache = null;
+  shortcutIconCache = null;
   fileIndex = null;
   desktopOrganizer = null;
   settingsStore = null;
+  tray?.destroy();
+  tray = null;
 });
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform === 'darwin') app.quit();
 });

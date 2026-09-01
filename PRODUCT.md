@@ -4,7 +4,7 @@
 
 ## Platform
 
-desktop
+adaptive
 
 ## Stack
 
@@ -16,7 +16,7 @@ Desktop users with many installed applications and files, especially developers,
 
 ## Product Purpose
 
-DesktopDock replaces a cluttered Windows desktop with a fast application launcher and local organizer. It combines global search, frequently used apps, categories, recent files, desktop organization, and settings in one local desktop utility.
+DesktopDock adds a compact right-edge desktop status bar for launching and organizing local content without opening a conventional management window. It combines global search, desktop shortcuts, applications, recent files, desktop organization, and settings in one tray-first local utility.
 
 ## Positioning
 
@@ -26,12 +26,13 @@ DesktopDock unifies instant keyboard-first launch and ongoing desktop organizati
 
 - Invoked repeatedly for a few seconds at a time through `Alt+Space` or the system tray.
 - Used in Windows 10/11 alongside installed applications, Start menu shortcuts, desktop files, and system settings.
-- The full window supports longer management tasks such as categorizing apps, organizing the desktop, managing recent files, and changing preferences.
+- The right-edge status bar stays within a 392px footprint; desktop, application, file, and settings modules switch in place.
+- Closing the surface hides it to the tray. Global shortcuts or the tray icon reveal it again.
 
 ## Capabilities and Constraints
 
 - Search applications, files, and settings with keyboard navigation.
-- Show eight frequent or pinned applications.
+- Show desktop shortcuts directly in the sidebar and load Windows Shell icons progressively.
 - Create, edit, reorder, and open application categories.
 - Organize desktop items with a preview, restore point, progress, and undo path.
 - Show recent files and favorite folders.
@@ -39,7 +40,7 @@ DesktopDock unifies instant keyboard-first launch and ongoing desktop organizati
 - Keep user data local and target Windows 10/11.
 - Windows Start Menu and desktop application scanning, SQLite persistence, usage counts, pinning, custom-category management, Windows Shell icon extraction/cache, secure Electron IPC, and real application launching are implemented.
 - Metadata-only file indexing, recent-file search/opening, favorite folders, transactional desktop file organization, collision-safe undo, settings persistence, login startup, shortcut re-registration, and configuration import/export are implemented.
-- Desktop organization never moves folders or shortcuts. Automated tests use temporary directories; the Electron smoke test performs only a read-only desktop preview.
+- Desktop file organization never moves folders or shortcuts. The separate shortcut vault moves only current-user desktop shortcut files after explicit confirmation, keeps public shortcuts read-only, preserves Windows system icons, and supports collision-safe restoration. Automated tests use temporary directories; the Electron smoke test performs only a read-only desktop preview.
 
 ## Brand Commitments
 

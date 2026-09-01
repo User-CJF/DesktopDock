@@ -5,6 +5,7 @@ node_modules/
 # Generated builds and installers
 dist/
 release/
+project/
 
 # Local Electron data
 *.db

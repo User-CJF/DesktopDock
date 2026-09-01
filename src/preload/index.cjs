@@ -6,6 +6,8 @@ const api = Object.freeze({
     minimize: () => ipcRenderer.invoke('dd:window:minimize'),
     maximize: () => ipcRenderer.invoke('dd:window:maximize'),
     close: () => ipcRenderer.invoke('dd:window:close'),
+    hide: () => ipcRenderer.invoke('dd:window:hide'),
+    quit: () => ipcRenderer.invoke('dd:window:quit'),
   }),
   theme: Object.freeze({
     get: () => ipcRenderer.invoke('dd:theme:get'),
@@ -65,6 +67,10 @@ const api = Object.freeze({
     organize: () => ipcRenderer.invoke('dd:desktop:organize'),
     restoreLast: () => ipcRenderer.invoke('dd:desktop:restore-last'),
     restorePoints: () => ipcRenderer.invoke('dd:desktop:restore-points'),
+    shortcutIcon: (shortcutId) => ipcRenderer.invoke('dd:desktop:shortcut-icon', { shortcutId }),
+    launchShortcut: (shortcutId) => ipcRenderer.invoke('dd:desktop:shortcut-launch', { shortcutId }),
+    stowShortcuts: () => ipcRenderer.invoke('dd:desktop:shortcut-stow'),
+    restoreShortcuts: () => ipcRenderer.invoke('dd:desktop:shortcut-restore'),
   }),
   settings: Object.freeze({
     get: () => ipcRenderer.invoke('dd:settings:get'),

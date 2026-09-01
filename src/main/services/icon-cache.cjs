@@ -1,13 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-function createIconCache(directory, getFileIcon, resolveSource) {
+function createIconCache(directory, getFileIcon, resolveSource, options = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const inFlight = new Map();
+  const idPattern = options.idPattern || /^app_[a-f0-9]{20}$/;
 
   async function extract(appId) {
-    if (typeof appId !== 'string' || !/^app_[a-f0-9]{20}$/.test(appId)) return null;
-    const source = resolveSource(appId);
+    if (typeof appId !== 'string' || !idPattern.test(appId)) return null;
+    const source = await resolveSource(appId);
     if (!source) return null;
     const cachePath = path.join(directory, `${appId}.png`);
 

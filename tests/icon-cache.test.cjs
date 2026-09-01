@@ -16,7 +16,7 @@ test('deduplicates extraction, caches PNG data, and refreshes stale entries', as
       extractionCount += 1;
       return { isEmpty: () => false, toPNG: () => Buffer.from(`png-${extractionCount}`) };
     },
-    (id) => id === appId ? { launchPath: 'C:\\Apps\\Example.lnk', mtimeMs: sourceMtime } : null,
+    async (id) => id === appId ? { launchPath: 'C:\\Apps\\Example.lnk', mtimeMs: sourceMtime } : null,
   );
 
   const [first, concurrent] = await Promise.all([cache.get(appId), cache.get(appId)]);

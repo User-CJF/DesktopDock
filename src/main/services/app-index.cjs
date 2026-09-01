@@ -93,7 +93,7 @@ async function scanWindowsApps(roots) {
   for (const result of results) {
     for (const entry of result.entries) byPath.set(entry.launchPath.toLowerCase(), entry);
   }
-  const sourcePriority = { start_menu_user: 0, start_menu_public: 1, desktop_user: 2, desktop_public: 3 };
+  const sourcePriority = { start_menu_user: 0, start_menu_public: 1, desktop_user: 2, desktop_vault: 3, desktop_public: 4 };
   const byName = new Map();
   for (const entry of [...byPath.values()].sort((left, right) => (sourcePriority[left.source] ?? 9) - (sourcePriority[right.source] ?? 9))) {
     const key = entry.name.toLocaleLowerCase('zh-CN').replace(/\s+/g, ' ');
@@ -219,9 +219,10 @@ function createAppIndex(databasePath, roots) {
       ORDER BY apps.pinned DESC, launchCount DESC,
         CASE apps.source
           WHEN 'desktop_user' THEN 0
-          WHEN 'desktop_public' THEN 1
-          WHEN 'start_menu_user' THEN 2
-          ELSE 3
+          WHEN 'desktop_vault' THEN 1
+          WHEN 'desktop_public' THEN 2
+          WHEN 'start_menu_user' THEN 3
+          ELSE 4
         END,
         apps.name COLLATE NOCASE ASC
       LIMIT ?
@@ -366,6 +367,32 @@ function createAppIndex(databasePath, roots) {
     return database.prepare('SELECT launch_path AS launchPath FROM apps WHERE id = ?').get(id) || null;
   }
 
+  function relocatePaths(movements, source) {
+    if (!Array.isArray(movements) || !movements.length) return { updated: 0 };
+    const update = database.prepare('UPDATE apps SET launch_path = ?, source = ?, mtime_ms = ?, updated_at = ? WHERE launch_path = ?');
+    const now = new Date().toISOString();
+    let updated = 0;
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const movement of movements) {
+        const previousPath = path.resolve(movement.originalPath);
+        const nextPath = path.resolve(movement.newPath);
+        let mtimeMs = 0;
+        try {
+          mtimeMs = Math.trunc(fs.statSync(nextPath).mtimeMs);
+        } catch {
+          continue;
+        }
+        updated += Number(update.run(nextPath, source, mtimeMs, now, previousPath).changes || 0);
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    return { updated };
+  }
+
   function clearUsage() {
     database.prepare('DELETE FROM usage_stats').run();
     return { success: true };
@@ -384,6 +411,7 @@ function createAppIndex(databasePath, roots) {
     setCategory,
     iconSource,
     resolveApp,
+    relocatePaths,
     clearUsage,
     close: () => database.close(),
   };

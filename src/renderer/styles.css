@@ -1,17 +1,17 @@
-@import "../../final/styles.css";
+@import "../../final/sidebar.css";
 
 /* Electron owns the viewport; browser preview keeps the same centered framing. */
-.desktop-frame {
+.dock-shell {
   -webkit-app-region: no-drag;
 }
 
-.titlebar {
+.dock-titlebar {
   -webkit-app-region: drag;
 }
 
-.titlebar button,
-.titlebar a,
-.titlebar input {
+.dock-titlebar button,
+.dock-titlebar a,
+.dock-titlebar input {
   -webkit-app-region: no-drag;
 }
 
@@ -19,10 +19,10 @@ body.is-electron {
   background: transparent;
 }
 
-body.is-electron .desktop-frame {
+body.is-electron .dock-shell {
   width: 100vw;
   height: 100vh;
-  min-height: 520px;
+  min-height: 560px;
   border: 0;
   border-radius: 0;
   box-shadow: none;

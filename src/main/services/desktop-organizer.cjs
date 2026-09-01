@@ -53,12 +53,73 @@ async function availableDestination(directory, name, reserved = new Set()) {
 function createDesktopOrganizer(options) {
   const desktopDirectory = path.resolve(options.desktopDirectory);
   const restoreDirectory = path.resolve(options.restoreDirectory);
+  const shortcutVaultDirectory = path.resolve(options.shortcutVaultDirectory || path.join(restoreDirectory, 'shortcut-vault'));
   const destinations = Object.fromEntries(Object.entries(options.destinations).map(([key, value]) => [key, path.resolve(value)]));
   const additionalScanDirectories = (options.additionalScanDirectories || []).map((directory) => path.resolve(directory));
+  const shortcutManifestPath = path.join(shortcutVaultDirectory, 'manifest.json');
+  let shortcutLookup = new Map();
 
   function isWithin(parent, child) {
     const relative = path.relative(parent, child);
     return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
+  function shortcutId(scope, name) {
+    const digest = crypto.createHash('sha256').update(`${scope}:${name.toLowerCase()}`).digest('hex').slice(0, 20);
+    return `shortcut_${digest}`;
+  }
+
+  async function shortcutEntries(directory, location, managed, scope) {
+    try {
+      const children = await fs.promises.readdir(directory, { withFileTypes: true });
+      const items = [];
+      for (const child of children) {
+        if (!child.isFile() || classifyFile(child.name) !== 'shortcuts') continue;
+        const fullPath = path.join(directory, child.name);
+        try {
+          const stat = await fs.promises.stat(fullPath);
+          items.push({
+            id: shortcutId(scope, child.name),
+            name: path.parse(child.name).name,
+            fileName: child.name,
+            location,
+            managed,
+            fullPath,
+            mtimeMs: Math.trunc(stat.mtimeMs),
+          });
+        } catch {
+          // The next scan reconciles shortcuts changed during enumeration.
+        }
+      }
+      return items;
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  async function listShortcuts() {
+    const groups = await Promise.all([
+      shortcutEntries(desktopDirectory, 'desktop', true, 'user'),
+      ...additionalScanDirectories.map((directory) => shortcutEntries(directory, 'public', false, `public:${directory.toLowerCase()}`)),
+      shortcutEntries(shortcutVaultDirectory, 'stowed', true, 'user'),
+    ]);
+    const items = groups.flat().sort((left, right) => {
+      const order = { desktop: 0, stowed: 1, public: 2 };
+      return order[left.location] - order[right.location] || left.name.localeCompare(right.name, 'zh-CN');
+    });
+    shortcutLookup = new Map(items.map((item) => [item.id, item]));
+    return items.map(({ fullPath, mtimeMs, fileName, ...item }) => item);
+  }
+
+  function resolveShortcut(id) {
+    if (typeof id !== 'string' || !/^shortcut_[a-f0-9]{20}$/.test(id)) return null;
+    return shortcutLookup.get(id) || null;
+  }
+
+  function shortcutIconSource(id) {
+    const item = resolveShortcut(id);
+    return item ? { launchPath: item.fullPath, mtimeMs: item.mtimeMs } : null;
   }
 
   async function scan() {
@@ -97,15 +158,109 @@ function createDesktopOrganizer(options) {
         }
       }
     }
-    for (const directory of additionalScanDirectories) {
+    const shortcutItems = await listShortcuts();
+    const desktopShortcuts = shortcutItems.filter((item) => item.location === 'desktop').length;
+    const publicShortcuts = shortcutItems.filter((item) => item.location === 'public').length;
+    const stowedShortcuts = shortcutItems.filter((item) => item.location === 'stowed').length;
+    shortcuts = shortcutItems.length;
+    return {
+      shortcuts,
+      desktopShortcuts,
+      publicShortcuts,
+      stowedShortcuts,
+      shortcutItems,
+      files,
+      folders,
+      total: shortcuts + files,
+      conflicts,
+      groups,
+    };
+  }
+
+  async function readShortcutManifest() {
+    try {
+      const value = JSON.parse(await fs.promises.readFile(shortcutManifestPath, 'utf8'));
+      return Array.isArray(value.items) ? value : { items: [] };
+    } catch {
+      return { items: [] };
+    }
+  }
+
+  async function writeShortcutManifest(manifest) {
+    await fs.promises.mkdir(shortcutVaultDirectory, { recursive: true });
+    const temporaryPath = `${shortcutManifestPath}.${process.pid}.tmp`;
+    await fs.promises.writeFile(temporaryPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await fs.promises.rename(temporaryPath, shortcutManifestPath);
+  }
+
+  async function stowShortcuts() {
+    const items = await shortcutEntries(desktopDirectory, 'desktop', true, 'user');
+    if (!items.length) return { success: true, stowed: 0, movements: [] };
+    await fs.promises.mkdir(shortcutVaultDirectory, { recursive: true });
+    const manifest = await readShortcutManifest();
+    const reserved = new Set();
+    const moved = [];
+    try {
+      for (const item of items) {
+        const destination = await availableDestination(shortcutVaultDirectory, item.fileName, reserved);
+        await moveFile(item.fullPath, destination);
+        const movement = { originalPath: item.fullPath, newPath: destination, fileName: path.basename(destination) };
+        moved.push(movement);
+        manifest.items = manifest.items.filter((entry) => path.resolve(entry.newPath).toLowerCase() !== destination.toLowerCase());
+        manifest.items.push({ ...movement, stowedAt: new Date().toISOString() });
+      }
+      await writeShortcutManifest(manifest);
+      await listShortcuts();
+      return { success: true, stowed: moved.length, movements: moved };
+    } catch (error) {
+      for (const item of moved.reverse()) await moveFile(item.newPath, item.originalPath).catch(() => {});
+      throw error;
+    }
+  }
+
+  async function restoreShortcuts() {
+    const manifest = await readShortcutManifest();
+    const stowed = await shortcutEntries(shortcutVaultDirectory, 'stowed', true, 'user');
+    const manifestByDestination = new Map(manifest.items.map((item) => [path.resolve(item.newPath).toLowerCase(), item]));
+    const restored = [];
+    const conflicts = [];
+    for (const item of stowed) {
+      const recorded = manifestByDestination.get(item.fullPath.toLowerCase());
+      const targetName = recorded && isWithin(desktopDirectory, path.resolve(recorded.originalPath))
+        ? path.basename(recorded.originalPath)
+        : item.fileName;
+      const destination = path.join(desktopDirectory, targetName);
       try {
-        const additional = await fs.promises.readdir(directory, { withFileTypes: true });
-        shortcuts += additional.filter((child) => child.isFile() && classifyFile(child.name) === 'shortcuts').length;
+        await fs.promises.access(destination);
+        conflicts.push(targetName);
+        continue;
       } catch {
-        // Public desktop can be unavailable without preventing user-desktop organization.
+        // The original desktop position is available.
+      }
+      try {
+        await moveFile(item.fullPath, destination);
+        restored.push({ originalPath: item.fullPath, newPath: destination });
+      } catch {
+        conflicts.push(targetName);
       }
     }
-    return { shortcuts, files, folders, total: shortcuts + files, conflicts, groups };
+    const restoredSources = new Set(restored.map((item) => item.originalPath.toLowerCase()));
+    manifest.items = manifest.items.filter((item) => !restoredSources.has(path.resolve(item.newPath).toLowerCase()));
+    await writeShortcutManifest(manifest);
+    await listShortcuts();
+    return { success: true, restored: restored.length, conflicts, movements: restored };
+  }
+
+  async function launchShortcut(id, openPath) {
+    const item = resolveShortcut(id);
+    if (!item) return { success: false, error: '快捷方式已不在桌面模块中，请重新扫描' };
+    try {
+      await fs.promises.access(item.fullPath, fs.constants.R_OK);
+      const error = await openPath(item.fullPath);
+      return error ? { success: false, error } : { success: true };
+    } catch {
+      return { success: false, error: '快捷方式不可访问，请重新扫描' };
+    }
   }
 
   async function listMovableFiles() {
@@ -203,7 +358,18 @@ function createDesktopOrganizer(options) {
     return restore(latest.id);
   }
 
-  return { scan, organize, restore, restoreLast, restorePoints };
+  return {
+    scan,
+    organize,
+    restore,
+    restoreLast,
+    restorePoints,
+    listShortcuts,
+    stowShortcuts,
+    restoreShortcuts,
+    launchShortcut,
+    shortcutIconSource,
+  };
 }
 
 module.exports = { classifyFile, createDesktopOrganizer };

@@ -503,6 +503,51 @@ html[data-grid-density="comfortable"] .app-tile { min-height: 114px; }
 .scan-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 8px; color: var(--success); background: var(--success-soft); font-size: 16px; }
 .scan-summary h2 { margin: 0; font-size: 16px; }
 .scan-summary p { margin: 3px 0 0; color: var(--text-2); font-size: 11px; }
+.shortcut-section { margin-top: 24px; }
+.shortcut-heading { align-items: flex-start; }
+.shortcut-heading > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.shortcut-heading > div:first-child > span { margin-top: 3px; color: var(--text-3); font-size: 10px; }
+.shortcut-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  max-height: 292px;
+  gap: 4px;
+  padding: 8px 2px;
+  overflow-y: auto;
+  border-block: 1px solid var(--border);
+}
+.shortcut-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 104px;
+  flex-direction: column;
+  padding: 10px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  background: transparent;
+  text-align: center;
+}
+.shortcut-item:hover { border-color: var(--border); background: var(--surface-2); }
+.shortcut-item:active { background: var(--accent-soft); }
+.shortcut-visual { position: relative; display: block; width: 42px; height: 42px; margin-bottom: 7px; }
+.shortcut-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-size: 18px; }
+.shortcut-icon.has-image { background: transparent; }
+.shortcut-icon img { width: 100%; height: 100%; object-fit: contain; }
+.shortcut-lock { position: absolute; right: -5px; bottom: -3px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid var(--surface); border-radius: 50%; color: var(--text-2); background: var(--surface-2); }
+.shortcut-lock .fluent-icon { font-size: 9px; }
+.shortcut-item b, .shortcut-item small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortcut-item b { font-size: 11px; font-weight: 600; }
+.shortcut-item small { margin-top: 2px; color: var(--text-3); font-size: 9px; }
+.shortcut-note { display: flex; align-items: flex-start; gap: 6px; margin: 7px 0 0; color: var(--text-3); font-size: 10px; line-height: 1.5; }
+.shortcut-note .fluent-icon { margin-top: 1px; flex: 0 0 auto; }
+.shortcut-empty { display: flex; align-items: center; justify-content: center; min-height: 120px; flex-direction: column; gap: 4px; border-block: 1px solid var(--border); color: var(--text-3); text-align: center; }
+.shortcut-empty > .fluent-icon { margin-bottom: 5px; color: var(--accent); font-size: 24px; }
+.shortcut-empty b { color: var(--text-2); font-size: 12px; }
+.shortcut-empty span:not(.fluent-icon) { max-width: 62ch; font-size: 10px; }
 .organize-list { margin-top: 22px; }
 .organize-rows { border-top: 1px solid var(--border); }
 .organize-row { display: grid; grid-template-columns: 34px 1fr 40px; align-items: center; min-height: 62px; gap: 10px; border-bottom: 1px solid var(--border); }
@@ -519,6 +564,8 @@ html[data-grid-density="comfortable"] .app-tile { min-height: 114px; }
 .organize-options small { margin-top: 2px; color: var(--text-3); font-size: 10px; }
 .organize-footer { padding-inline: 0; border-bottom: 0; }
 .organize-footer > span { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 11px; }
+.shortcut-confirm b { color: var(--text); }
+.shortcut-confirm ul { margin: 14px 0 0; padding-left: 20px; color: var(--text-2); line-height: 1.9; }
 
 .settings-page { display: grid; grid-template-columns: 176px minmax(0, 660px); min-height: 100%; gap: 24px; }
 .settings-nav { display: flex; flex-direction: column; gap: 2px; padding-right: 16px; border-right: 1px solid var(--border); }
@@ -750,6 +797,10 @@ mark { color: var(--accent); background: transparent; font-weight: 700; }
   .file-row { grid-template-columns: 34px minmax(0, 1fr) 50px 20px; }
   .file-size { display: none; }
   .organize-overview, .category-rules, .organize-footer { align-items: flex-start; flex-direction: column; }
+  .shortcut-heading { align-items: stretch; flex-direction: column; }
+  .shortcut-actions { width: 100%; }
+  .shortcut-actions button { flex: 1; }
+  .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .organize-options { grid-template-columns: 1fr; }
   .organize-footer .primary-button { width: 100%; }
   .settings-page { display: block; }

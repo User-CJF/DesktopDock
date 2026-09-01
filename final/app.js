@@ -52,6 +52,8 @@ const demoApps = [
 let apps = desktopApi?.isElectron ? [] : demoApps;
 const iconMemory = new Map();
 let iconLoadGeneration = 0;
+const shortcutIconMemory = new Map();
+let shortcutIconLoadGeneration = 0;
 
 const demoCategories = [
   { id: 'office', name: '办公', icon: '📄', color: '#4f6bff', count: 12 },
@@ -112,7 +114,11 @@ const state = {
   categorySaving: false,
   fileSearchResults: null,
   files: { loading: Boolean(desktopApi?.isElectron), scanning: false, error: null, total: files.length, lastScanAt: null },
-  organizer: { loading: Boolean(desktopApi?.isElectron), error: null, shortcuts: 0, files: 0, folders: 0, total: 0, conflicts: 0, groups: {}, restorePoints: [] },
+  organizer: {
+    loading: Boolean(desktopApi?.isElectron), processingShortcuts: false, error: null,
+    shortcuts: 0, desktopShortcuts: 0, publicShortcuts: 0, stowedShortcuts: 0,
+    shortcutItems: [], files: 0, folders: 0, total: 0, conflicts: 0, groups: {}, restorePoints: [],
+  },
   settings: {
     accentColor: '#4f6bff', glassEffect: true, iconSize: 'medium', gridDensity: 'normal',
     autoStart: false, startMinimized: false, autoHideSearch: true, closeAfterLaunch: true,
@@ -251,6 +257,40 @@ async function hydrateAppIcons(items) {
   await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
 }
 
+function shortcutIcon(item) {
+  const image = typeof item.iconData === 'string' && item.iconData.startsWith('data:image/png;base64,')
+    ? `<img src="${item.iconData}" alt="" />`
+    : icon(ICONS.open);
+  return `<span class="shortcut-icon ${item.iconData ? 'has-image' : ''}" data-icon-shortcut="${escapeHtml(item.id)}" aria-hidden="true">${image}</span>`;
+}
+
+async function hydrateShortcutIcons(items) {
+  if (!desktopApi?.desktop?.shortcutIcon) return;
+  const generation = ++shortcutIconLoadGeneration;
+  const pending = items.filter((item) => !shortcutIconMemory.has(item.id));
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < pending.length && generation === shortcutIconLoadGeneration) {
+      const item = pending[cursor];
+      cursor += 1;
+      const data = await desktopApi.desktop.shortcutIcon(item.id).catch(() => null);
+      if (generation !== shortcutIconLoadGeneration) return;
+      const safeData = typeof data === 'string' && data.startsWith('data:image/png;base64,') ? data : null;
+      shortcutIconMemory.set(item.id, safeData);
+      item.iconData = safeData;
+      if (!safeData) continue;
+      document.querySelectorAll(`[data-icon-shortcut="${item.id}"]`).forEach((container) => {
+        const image = document.createElement('img');
+        image.src = safeData;
+        image.alt = '';
+        container.replaceChildren(image);
+        container.classList.add('has-image');
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
+}
+
 function scanTimeLabel(value) {
   if (!value) return '尚未扫描';
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000));
@@ -315,7 +355,7 @@ function renderCommandbar() {
     home: `<div class="page-heading"><h1>常用</h1><p>固定与最近启动的应用</p></div>${searchButton()}<button class="secondary-button" type="button" data-action="toggle-edit">${icon(ICONS.edit)}${state.editMode ? '完成' : '管理'}</button>`,
     categories: `<div class="page-heading"><h1>分类</h1><p>${categories.length} 个分类，${apps.length} 个应用</p></div>${searchButton()}<button class="primary-button" type="button" data-action="new-category">${icon(ICONS.add)}新建分类</button>`,
     files: `<div class="page-heading"><h1>文件</h1><p>最近文件与常用位置</p></div>${searchButton()}<button class="secondary-button" type="button" data-action="add-folder">${icon(ICONS.add)}添加文件夹</button>`,
-    organize: `<div class="page-heading"><h1>桌面整理</h1><p>${state.organizer.loading ? '正在扫描桌面' : `${state.organizer.total} 个项目可处理`}</p></div><span class="last-restore">${state.organizer.restorePoints[0] ? `上次整理：${scanTimeLabel(state.organizer.restorePoints[0].createdAt)}` : '尚无还原点'}</span><button class="secondary-button" type="button" data-action="restore-last" ${state.organizer.restorePoints.length ? '' : 'disabled'}>${icon(ICONS.undo)}还原上次整理</button>`,
+    organize: `<div class="page-heading"><h1>桌面整理</h1><p>${state.organizer.loading ? '正在扫描桌面' : `${state.organizer.shortcuts} 个快捷方式，${state.organizer.files} 个文件`}</p></div><span class="last-restore">${state.organizer.restorePoints[0] ? `上次整理：${scanTimeLabel(state.organizer.restorePoints[0].createdAt)}` : '尚无文件还原点'}</span><button class="secondary-button" type="button" data-action="restore-last" ${state.organizer.restorePoints.length ? '' : 'disabled'}>${icon(ICONS.undo)}还原文件整理</button>`,
     settings: `<div class="page-heading"><h1>设置</h1><p>当前配置保存在本机</p></div><button class="icon-button command-icon" type="button" data-action="open-search" title="搜索设置" aria-label="搜索设置">${icon(ICONS.search)}</button>`,
   };
   commandbar.innerHTML = commands[state.view];
@@ -377,8 +417,8 @@ function homePage() {
           <div class="compact-files">${files.slice(0, 3).map(fileRow).join('')}</div>
         </section>
         <section class="desktop-summary">
-          <div class="desktop-summary-heading">${icon(ICONS.organize)}<div><b>${state.organizer.loading ? '正在检查桌面' : `桌面有 ${state.organizer.total} 个可处理项目`}</b><small>${state.organizer.shortcuts} 个快捷方式，${state.organizer.files} 个文件；文件夹保持原位</small></div></div>
-          <button class="primary-button" type="button" data-action="organize-now" ${state.organizer.loading || !state.organizer.total ? 'disabled' : ''}>一键整理</button>
+          <div class="desktop-summary-heading">${icon(ICONS.organize)}<div><b>${state.organizer.loading ? '正在检查桌面' : `桌面有 ${state.organizer.desktopShortcuts} 个快捷方式可收纳`}</b><small>${state.organizer.files} 个普通文件可分类整理；系统图标和文件夹保持原位</small></div></div>
+          <button class="primary-button" type="button" data-nav="organize" ${state.organizer.loading ? 'disabled' : ''}>打开桌面模块</button>
         </section>
       </aside>
     </div>
@@ -412,24 +452,35 @@ function filesPage() {
 
 function organizePage() {
   const groups = [
-    ['快捷方式', state.organizer.shortcuts, '保留在桌面，由应用索引统一管理', ICONS.home],
     ['文档', state.organizer.groups.documents || 0, '移动到 文档\\桌面整理', ICONS.files],
     ['图片', state.organizer.groups.images || 0, '移动到 图片\\桌面整理', '&#xEB9F;'],
     ['视频', state.organizer.groups.videos || 0, '移动到 视频\\桌面整理', '&#xE714;'],
     ['压缩文件', state.organizer.groups.archives || 0, '移动到 下载\\桌面整理', '&#xF012;'],
     ['其他文件', state.organizer.groups.other || 0, '移动到 文档\\桌面整理\\其他', ICONS.folder],
   ];
+  const shortcutLocation = { desktop: '当前桌面', stowed: '已收纳', public: '公共桌面' };
+  const shortcutItems = state.organizer.shortcutItems || [];
+  const shortcutContent = state.organizer.loading
+    ? `<div class="shortcut-empty" aria-busy="true">${icon(ICONS.refresh)}<b>正在获取桌面快捷方式</b><span>同时解析 Windows 快捷方式的真实图标。</span></div>`
+    : shortcutItems.length
+      ? `<div class="shortcut-grid">${shortcutItems.map((item) => `<button class="shortcut-item" type="button" data-shortcut="${escapeHtml(item.id)}" title="打开 ${escapeHtml(item.name)}"><span class="shortcut-visual">${shortcutIcon(item)}${item.location === 'public' ? `<span class="shortcut-lock" title="公共桌面，只读">${icon(ICONS.info)}</span>` : ''}</span><b>${escapeHtml(item.name)}</b><small>${shortcutLocation[item.location] || '桌面'}</small></button>`).join('')}</div>`
+      : `<div class="shortcut-empty">${icon(ICONS.check)}<b>没有发现桌面快捷方式</b><span>“此电脑”“回收站”等 Windows 系统图标不属于快捷方式文件，因此不会被处理。</span></div>`;
   return `<div class="organize-page">
     <section class="organize-overview">
       <div class="scan-summary"><span class="scan-icon">${icon(state.organizer.error ? ICONS.warning : state.organizer.loading ? ICONS.refresh : ICONS.check)}</span><div><h2>${state.organizer.error ? '桌面扫描未完成' : state.organizer.loading ? '正在扫描桌面' : '桌面扫描完成'}</h2><p>${state.organizer.error ? escapeHtml(state.organizer.error) : state.organizer.loading ? '仅检查桌面根目录，不读取文件内容。' : `发现 ${state.organizer.total} 个可处理项目，${state.organizer.conflicts} 个同名目标将自动安全改名。`}</p></div></div>
       <button class="secondary-button" type="button" data-action="rescan" ${state.organizer.loading ? 'disabled' : ''}>${icon(ICONS.refresh)}重新扫描</button>
     </section>
+    <section class="shortcut-section content-section">
+      <div class="section-heading shortcut-heading"><div><h2>桌面快捷方式</h2><span>点击可直接启动；当前桌面 ${state.organizer.desktopShortcuts} 个，已收纳 ${state.organizer.stowedShortcuts} 个，公共桌面 ${state.organizer.publicShortcuts} 个</span></div><div class="shortcut-actions"><button class="secondary-button" type="button" data-action="restore-shortcuts" ${state.organizer.processingShortcuts || !state.organizer.stowedShortcuts ? 'disabled' : ''}>${icon(ICONS.undo)}恢复到桌面</button><button class="primary-button" type="button" data-action="stow-shortcuts" ${state.organizer.processingShortcuts || !state.organizer.desktopShortcuts ? 'disabled' : ''}>${icon(ICONS.organize)}收纳当前桌面</button></div></div>
+      ${shortcutContent}
+      <p class="shortcut-note">${icon(ICONS.info)} 只移动当前用户桌面的快捷方式文件；系统图标、文件夹、普通文件与公共桌面快捷方式均保持原位。</p>
+    </section>
     <section class="organize-list content-section">
-      <div class="section-heading"><h2>整理预览</h2><span>共 ${state.organizer.total} 项</span></div>
+      <div class="section-heading"><h2>普通文件整理</h2><span>共 ${state.organizer.files} 项</span></div>
       <div class="organize-rows">${groups.map(([name, count, detail, glyph]) => `<div class="organize-row">${icon(glyph)}<span><b>${name}</b><small>${detail}</small></span><strong>${count}</strong></div>`).join('')}</div>
     </section>
     <section class="organize-options"><label><input type="checkbox" checked disabled /> <span><b>创建还原点</b><small>每次整理强制保留原始位置，最多保存 5 次</small></span></label></section>
-    <footer class="organize-footer"><span>${icon(ICONS.info)} 文件夹和快捷方式不会被移动</span><button class="primary-button large" type="button" data-action="organize-now" ${state.organizer.loading || !state.organizer.files ? 'disabled' : ''}>开始整理 ${state.organizer.files} 个文件</button></footer>
+    <footer class="organize-footer"><span>${icon(ICONS.info)} 普通文件整理与快捷方式收纳相互独立，均可恢复</span><button class="primary-button large" type="button" data-action="organize-now" ${state.organizer.loading || !state.organizer.files ? 'disabled' : ''}>整理 ${state.organizer.files} 个文件</button></footer>
   </div>`;
 }
 
@@ -599,7 +650,54 @@ function categoryDialog(category) {
 }
 
 function organizeDialog() {
-  openModal(`<header class="dialog-header"><div><h2 id="dialogTitle">一键整理桌面</h2><p>将移动 ${state.organizer.files} 个普通文件；快捷方式和文件夹保持原位。</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">${icon('&#xE711;')}</button></header><div class="organize-dialog-body"><div class="preview-summary"><span><b>${state.organizer.shortcuts}</b><small>保留快捷方式</small></span><span><b>${state.organizer.files}</b><small>移动桌面文件</small></span><span><b>${state.organizer.conflicts}</b><small>自动改名</small></span></div><label class="check-row"><input type="checkbox" checked disabled />创建安全还原点（强制开启）</label><div class="progress-block" hidden><div><span>正在移动文件并写入还原点…</span><b>${state.organizer.files} 项</b></div><progress></progress></div></div><footer class="dialog-footer"><button class="secondary-button" type="button" data-action="close-modal">取消</button><button class="primary-button" type="button" data-action="start-organize">确认整理</button></footer>`, 'organize-dialog');
+  openModal(`<header class="dialog-header"><div><h2 id="dialogTitle">整理普通文件</h2><p>将移动 ${state.organizer.files} 个普通文件；快捷方式、系统图标和文件夹保持原位。</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">${icon('&#xE711;')}</button></header><div class="organize-dialog-body"><div class="preview-summary"><span><b>${state.organizer.files}</b><small>移动桌面文件</small></span><span><b>${state.organizer.conflicts}</b><small>安全改名</small></span><span><b>${state.organizer.folders}</b><small>保留文件夹</small></span></div><label class="check-row"><input type="checkbox" checked disabled />创建安全还原点（强制开启）</label><div class="progress-block" hidden><div><span>正在移动文件并写入还原点…</span><b>${state.organizer.files} 项</b></div><progress></progress></div></div><footer class="dialog-footer"><button class="secondary-button" type="button" data-action="close-modal">取消</button><button class="primary-button" type="button" data-action="start-organize">确认整理</button></footer>`, 'organize-dialog');
+}
+
+function stowShortcutsDialog() {
+  openModal(`<header class="dialog-header"><div><h2 id="dialogTitle">收纳桌面快捷方式</h2><p>将 ${state.organizer.desktopShortcuts} 个当前用户快捷方式移入桌面舱的本地收纳区。</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">${icon('&#xE711;')}</button></header><div class="confirm-body shortcut-confirm"><p><b>收纳后，这些快捷方式会从 Windows 桌面消失，但仍可在本页点击启动，并能随时恢复。</b></p><ul><li>“此电脑”“回收站”等系统图标不会变化</li><li>公共桌面快捷方式只显示，不会被移动</li><li>普通文件和文件夹不会被移动</li></ul></div><footer class="dialog-footer"><button class="secondary-button" type="button" data-action="close-modal">取消</button><button class="primary-button" type="button" data-action="confirm-stow-shortcuts">确认收纳 ${state.organizer.desktopShortcuts} 个</button></footer>`, 'confirm-dialog');
+}
+
+async function stowDesktopShortcuts(button) {
+  if (!desktopApi?.desktop) {
+    closeModal();
+    showToast('网页预览不会移动桌面快捷方式');
+    return;
+  }
+  button.disabled = true;
+  button.textContent = '正在收纳…';
+  state.organizer.processingShortcuts = true;
+  const result = await desktopApi.desktop.stowShortcuts().catch((error) => ({ success: false, error: error?.message || '收纳请求未完成' }));
+  closeModal();
+  state.organizer.processingShortcuts = false;
+  if (!result.success) {
+    showToast(result.error || '快捷方式收纳失败，请检查桌面访问权限', null, 'error');
+    await loadOrganizer();
+    return;
+  }
+  await Promise.all([loadOrganizer(), loadNativeApps()]);
+  showToast(`已收纳 ${result.stowed} 个快捷方式`, { label: '恢复', action: 'restore-shortcuts' });
+}
+
+async function restoreDesktopShortcuts() {
+  if (!desktopApi?.desktop || state.organizer.processingShortcuts) return;
+  state.organizer.processingShortcuts = true;
+  render();
+  const result = await desktopApi.desktop.restoreShortcuts().catch((error) => ({ success: false, error: error?.message || '恢复请求未完成' }));
+  state.organizer.processingShortcuts = false;
+  if (!result.success) {
+    showToast(result.error || '快捷方式恢复失败，请检查桌面访问权限', null, 'error');
+    await loadOrganizer();
+    return;
+  }
+  await Promise.all([loadOrganizer(), loadNativeApps()]);
+  const conflicts = result.conflicts?.length || 0;
+  showToast(conflicts ? `已恢复 ${result.restored} 个，${conflicts} 个同名位置已安全跳过` : `已恢复 ${result.restored} 个快捷方式`, null, conflicts ? 'error' : 'success');
+}
+
+async function launchDesktopShortcut(item) {
+  if (!desktopApi?.desktop) return showToast(`网页预览：${item.name}`);
+  const result = await desktopApi.desktop.launchShortcut(item.id).catch(() => ({ success: false, error: '启动请求未完成' }));
+  if (!result.success) showToast(result.error || '快捷方式无法启动，请重新扫描', null, 'error');
 }
 
 async function startOrganize(button) {
@@ -757,8 +855,10 @@ async function loadOrganizer() {
   if (state.view === 'organize') render();
   try {
     const [preview, restorePoints] = await Promise.all([desktopApi.desktop.scan(), desktopApi.desktop.restorePoints()]);
+    preview.shortcutItems = (preview.shortcutItems || []).map((item) => ({ ...item, iconData: shortcutIconMemory.get(item.id) || null }));
     state.organizer = { ...state.organizer, ...preview, restorePoints, loading: false, error: null };
     render();
+    void hydrateShortcutIcons(state.organizer.shortcutItems);
     return true;
   } catch {
     state.organizer = { ...state.organizer, loading: false, error: '无法读取桌面，请检查 Windows 文件访问权限。' };
@@ -1029,6 +1129,9 @@ function handleAction(action, element) {
   if (action === 'toggle-edit') { state.editMode = !state.editMode; render(); }
   if (action === 'organize-now') organizeDialog();
   if (action === 'start-organize') void startOrganize(element);
+  if (action === 'stow-shortcuts') stowShortcutsDialog();
+  if (action === 'confirm-stow-shortcuts') void stowDesktopShortcuts(element);
+  if (action === 'restore-shortcuts') void restoreDesktopShortcuts();
   if (action === 'close-modal') closeModal();
   if (action === 'new-category') categoryFormDialog();
   if (action === 'save-category') void saveCategory(element);
@@ -1094,6 +1197,12 @@ document.addEventListener('click', (event) => {
   if (fileButton) {
     const file = [...files, ...(state.fileSearchResults || [])].find((item) => item.id === fileButton.dataset.file);
     if (file) void openFile(file);
+  }
+
+  const shortcutButton = event.target.closest('[data-shortcut]');
+  if (shortcutButton) {
+    const item = state.organizer.shortcutItems.find((shortcut) => shortcut.id === shortcutButton.dataset.shortcut);
+    if (item) void launchDesktopShortcut(item);
   }
 
   const folderButton = event.target.closest('[data-folder]');

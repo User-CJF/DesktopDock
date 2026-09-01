@@ -15,9 +15,10 @@
     "smoke": "node scripts/smoke.cjs",
     "test:index": "node --test tests/app-index.test.cjs",
     "test:icons": "node --test tests/icon-cache.test.cjs",
-    "check": "node --check src/main/index.cjs && node --check src/preload/index.cjs && node --check final/app.js && node --test tests/*.test.cjs && vite build",
+    "check": "node --check src/main/index.cjs && node --check src/preload/index.cjs && node --check final/sidebar.js && node --test tests/*.test.cjs && vite build",
     "pack:win": "vite build && electron-builder --win --dir",
-    "dist:win": "vite build && electron-builder --win nsis"
+    "dist:win": "vite build && electron-builder --win nsis",
+    "portable:win": "vite build && electron-builder --win portable"
   },
   "engines": {
     "node": ">=20"
@@ -56,6 +57,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "DesktopDock-${version}-Portable.${ext}",
+      "requestExecutionLevel": "user"
     }
   }
 }

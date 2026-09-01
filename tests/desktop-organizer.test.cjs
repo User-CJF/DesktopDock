@@ -48,3 +48,53 @@ test('classification covers the documented file groups', () => {
   assert.equal(classifyFile('a.url'), 'shortcuts');
   assert.equal(classifyFile('a.bin'), 'other');
 });
+
+test('lists, safely stows, launches, and restores user desktop shortcuts', async (t) => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'desktopdock-shortcuts-'));
+  t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+  const desktop = path.join(temporaryDirectory, 'desktop');
+  const publicDesktop = path.join(temporaryDirectory, 'public-desktop');
+  const vault = path.join(temporaryDirectory, 'vault');
+  const restoreDirectory = path.join(temporaryDirectory, 'restore');
+  const documents = path.join(temporaryDirectory, 'documents');
+  [desktop, publicDesktop, documents].forEach((directory) => fs.mkdirSync(directory));
+  fs.writeFileSync(path.join(desktop, '编辑器.lnk'), 'user-shortcut');
+  fs.writeFileSync(path.join(publicDesktop, '公共工具.lnk'), 'public-shortcut');
+
+  const organizer = createDesktopOrganizer({
+    desktopDirectory: desktop,
+    additionalScanDirectories: [publicDesktop],
+    shortcutVaultDirectory: vault,
+    restoreDirectory,
+    destinations: { documents, images: documents, videos: documents, archives: documents, other: documents },
+  });
+
+  const preview = await organizer.scan();
+  assert.equal(preview.desktopShortcuts, 1);
+  assert.equal(preview.publicShortcuts, 1);
+  assert.equal(preview.stowedShortcuts, 0);
+  assert.equal(preview.shortcutItems.every((item) => !('fullPath' in item)), true);
+
+  const desktopItem = preview.shortcutItems.find((item) => item.location === 'desktop');
+  let launchedPath = null;
+  const launched = await organizer.launchShortcut(desktopItem.id, async (target) => {
+    launchedPath = target;
+    return '';
+  });
+  assert.equal(launched.success, true);
+  assert.equal(launchedPath, path.join(desktop, '编辑器.lnk'));
+
+  const stowed = await organizer.stowShortcuts();
+  assert.equal(stowed.stowed, 1);
+  assert.equal(fs.existsSync(path.join(desktop, '编辑器.lnk')), false);
+  assert.equal(fs.existsSync(path.join(publicDesktop, '公共工具.lnk')), true);
+  const afterStow = await organizer.scan();
+  assert.equal(afterStow.stowedShortcuts, 1);
+  assert.equal(afterStow.desktopShortcuts, 0);
+
+  const restored = await organizer.restoreShortcuts();
+  assert.equal(restored.restored, 1);
+  assert.deepEqual(restored.conflicts, []);
+  assert.equal(fs.readFileSync(path.join(desktop, '编辑器.lnk'), 'utf8'), 'user-shortcut');
+  assert.equal(fs.readFileSync(path.join(publicDesktop, '公共工具.lnk'), 'utf8'), 'public-shortcut');
+});
