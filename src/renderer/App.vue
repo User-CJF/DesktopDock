@@ -5,8 +5,9 @@
         <span class="dock-brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span>
         <span><strong>桌面舱</strong><small id="dockStatus">正在连接桌面</small></span>
       </div>
-      <time id="dockClock" aria-label="当前时间"></time>
       <div class="dock-window-actions" aria-label="状态栏控制">
+        <button type="button" data-action="new-category" title="新建分类" aria-label="新建应用分类"><span class="fluent-icon" aria-hidden="true">&#xE710;</span></button>
+        <button type="button" data-action="open-settings" title="设置" aria-label="打开桌面舱设置"><span class="fluent-icon" aria-hidden="true">&#xE713;</span></button>
         <button type="button" data-action="refresh-all" title="刷新" aria-label="刷新桌面数据"><span class="fluent-icon" aria-hidden="true">&#xE72C;</span></button>
         <button type="button" data-action="hide-dock" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button>
       </div>
@@ -20,9 +21,8 @@
     </section>
     <section class="dock-search-results" id="dockSearchResults" aria-label="搜索结果" hidden></section>
 
-    <div class="dock-summary" id="dockSummary" aria-live="polite"></div>
     <section class="dock-content" id="dockContent" tabindex="-1" aria-live="polite"></section>
-    <nav class="dock-nav" id="dockNav" aria-label="桌面舱模块"></nav>
+    <footer class="dock-summary" id="dockSummary" aria-live="polite"></footer>
   </main>
 
   <div class="dock-dialog-layer" id="dockDialogLayer" hidden>

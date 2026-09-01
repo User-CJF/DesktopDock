@@ -7,6 +7,8 @@ const { createIconCache } = require('./services/icon-cache.cjs');
 const { createFileIndex } = require('./services/file-index.cjs');
 const { createDesktopOrganizer } = require('./services/desktop-organizer.cjs');
 const { createSettingsStore } = require('./services/settings-store.cjs');
+const { createWeatherService } = require('./services/weather-service.cjs');
+const { controlMedia } = require('./services/media-control.cjs');
 
 if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
   app.disableHardwareAcceleration();
@@ -24,6 +26,7 @@ let shortcutIconCache = null;
 let fileIndex = null;
 let desktopOrganizer = null;
 let settingsStore = null;
+let weatherService = null;
 const shortcutRegistration = {
   search: { requested: 'Alt+Space', active: null },
   toggleWindow: { requested: 'Alt+D', active: null },
@@ -259,9 +262,8 @@ async function runSidebarSmokeTest(window) {
         }
         return true;
       };
-      const loaded = await waitUntil(() => document.querySelector('#dockStatus')?.textContent.includes('已就绪'));
+      const loaded = await waitUntil(() => document.querySelector('#dockStatus')?.textContent.includes('已吸附'));
       const root = document.querySelector('.dock-shell');
-      const nav = [...document.querySelectorAll('#dockNav [data-view]')];
       const apps = await window.desktopDock.apps.list({ size: 500 });
       const index = await window.desktopDock.index.getStatus();
       const desktop = await window.desktopDock.desktop.scan();
@@ -275,14 +277,19 @@ async function runSidebarSmokeTest(window) {
       const appIcon = appTarget ? await window.desktopDock.apps.icon(appTarget.id) : null;
       const shortcutTarget = desktop.shortcutItems?.[0];
       const shortcutIcon = shortcutTarget ? await window.desktopDock.desktop.shortcutIcon(shortcutTarget.id) : null;
-      document.querySelector('#dockNav [data-view="apps"]')?.click();
-      const appsView = document.querySelector('#dockContent .app-grid') && document.querySelectorAll('#dockContent [data-app]').length > 0;
-      document.querySelector('#dockNav [data-view="files"]')?.click();
-      const filesView = document.querySelector('#dockContent .file-list') || document.querySelector('#dockContent .empty-state');
-      document.querySelector('#dockNav [data-view="settings"]')?.click();
-      const settingsView = document.querySelectorAll('#dockContent [data-setting]').length >= 3;
-      document.querySelector('#dockNav [data-view="desktop"]')?.click();
-      const desktopView = Boolean(document.querySelector('#dockContent .shortcut-module') && document.querySelector('#dockContent .desktop-meter'));
+      const categories = await window.desktopDock.categories.list();
+      const roots = await window.desktopDock.files.roots();
+      const widgetBoard = document.querySelectorAll('#dockContent .widget-column').length === 2;
+      const categoryWidgets = document.querySelectorAll('#dockContent .category-widget').length === categories.length;
+      const appsView = document.querySelectorAll('#dockContent [data-app]').length > 0;
+      const filesView = document.querySelector('#dockContent .file-widget');
+      const desktopView = document.querySelector('#dockContent .shortcut-widget');
+      document.querySelector('[data-action="open-settings"]')?.click();
+      const settingsView = document.querySelectorAll('#dockDialog [data-setting]').length >= 3;
+      document.querySelector('#dockDialog [data-action="close-dialog"]')?.click();
+      document.querySelector('[data-action="new-category"]')?.click();
+      const categoryEditor = Boolean(document.querySelector('#dockDialog #categoryForm'));
+      document.querySelector('#dockDialog [data-action="close-dialog"]')?.click();
       const search = document.querySelector('#dockSearch');
       search.value = appTarget?.name || 'test';
       search.dispatchEvent(new Event('input', { bubbles: true }));
@@ -290,8 +297,7 @@ async function runSidebarSmokeTest(window) {
       return {
         loaded,
         bridge: window.desktopDock?.isElectron === true,
-        navCount: nav.length,
-        compactWidth: root?.getBoundingClientRect().width <= 400,
+        dockWidth: Math.abs((root?.getBoundingClientRect().width || 0) - document.documentElement.clientWidth) < 1,
         noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
         appsIndexed: apps.length > 0 && index.totalApps === apps.length,
         shortcutBridgeSafe: Array.isArray(desktop.shortcutItems) && desktop.shortcutItems.every((item) => !('fullPath' in item) && !('fileName' in item)),
@@ -303,6 +309,10 @@ async function runSidebarSmokeTest(window) {
         filesView: Boolean(filesView),
         settingsView,
         desktopView,
+        widgetBoard,
+        categoryWidgets,
+        categoryEditor,
+        rootsBridge: Array.isArray(roots),
         searchReady,
         shortcutCountRendered: document.querySelectorAll('#dockContent [data-shortcut]').length,
       };
@@ -315,15 +325,14 @@ async function runSidebarSmokeTest(window) {
       input.value = '';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       document.querySelector('#dockSearchResults').hidden = true;
-      document.querySelector('#dockNav [data-view="desktop"]')?.click();
     })()`);
     await new Promise((resolve) => setTimeout(resolve, 220));
     const desktopScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-sidebar-desktop.png'), desktopScreenshot.toPNG());
-    await window.webContents.executeJavaScript("document.querySelector('#dockNav [data-view=\"settings\"]')?.click()");
+    fs.writeFileSync(smokeArtifactPath('electron-widget-dock.png'), desktopScreenshot.toPNG());
+    await window.webContents.executeJavaScript("document.querySelector('[data-action=\"open-settings\"]')?.click()");
     await new Promise((resolve) => setTimeout(resolve, 180));
     const settingsScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-sidebar-settings.png'), settingsScreenshot.toPNG());
+    fs.writeFileSync(smokeArtifactPath('electron-widget-settings.png'), settingsScreenshot.toPNG());
     const passed = Object.entries(result).every(([key, value]) => key === 'shortcutCountRendered' ? value >= 0 : Boolean(value));
     console.log(`DesktopDock sidebar smoke test: ${JSON.stringify(result)}`);
     if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
@@ -342,21 +351,22 @@ async function runSidebarSmokeTest(window) {
 function createMainWindow() {
   const isSmokeTest = process.env.DESKTOPDOCK_SMOKE_TEST === '1';
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = 392;
-  const height = Math.min(920, Math.max(560, workArea.height - 24));
+  const width = 500;
+  const height = workArea.height;
   mainWindow = new BrowserWindow({
     width,
     height,
-    x: workArea.x + workArea.width - width - 12,
-    y: workArea.y + 12,
+    x: workArea.x + workArea.width - width,
+    y: workArea.y,
     minWidth: width,
-    minHeight: 560,
+    minHeight: Math.min(560, height),
     maxWidth: width,
     show: false,
     frame: false,
     resizable: false,
     maximizable: false,
     minimizable: false,
+    movable: false,
     skipTaskbar: !isSmokeTest,
     alwaysOnTop: !isSmokeTest,
     backgroundColor: isSmokeTest ? '#f3f3f3' : '#00000000',
@@ -411,7 +421,7 @@ function positionDockWindow() {
   if (!mainWindow) return;
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const [width, height] = mainWindow.getSize();
-  mainWindow.setPosition(workArea.x + workArea.width - width - 12, workArea.y + Math.max(8, Math.trunc((workArea.height - height) / 2)));
+  mainWindow.setBounds({ x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height }, true);
 }
 
 async function createTray() {
@@ -536,6 +546,17 @@ function registerIpc() {
     mainWindow?.webContents.send('dd:index:updated', appIndex.status());
     return { success: true, restored: result.restored, conflicts: result.conflicts };
   });
+  ipcMain.handle('dd:weather:get', (_event, payload = {}) => {
+    if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
+      return {
+        city: payload.city || '深圳', locationName: '深圳 · 广东', updatedAt: new Date().toISOString(),
+        current: { temperature: 31, apparentTemperature: 34, relativeHumidity: 69, precipitationProbability: 18, weatherCode: 2, windSpeed: 9 },
+        hourly: Array.from({ length: 6 }, (_item, index) => ({ time: new Date(Date.now() + index * 3600000).toISOString(), temperature: 31 - Math.floor(index / 2), weatherCode: index < 3 ? 2 : 1, precipitationProbability: 18 })),
+      };
+    }
+    return weatherService.get(payload.city || settingsStore.get().weatherCity, { force: Boolean(payload.force) });
+  });
+  ipcMain.handle('dd:media:control', (_event, payload = {}) => controlMedia(payload.action));
   ipcMain.handle('dd:settings:get', () => settingsStore.get());
   ipcMain.handle('dd:settings:set', (_event, payload = {}) => mutation(() => {
     const result = settingsStore.set(payload.key, payload.value);
@@ -679,6 +700,7 @@ app.whenReady().then(async () => {
   appIndex = createAppIndex(databasePath, applicationRoots(shortcutVaultDirectory));
   fileIndex = createFileIndex(databasePath, fileRoots());
   settingsStore = createSettingsStore(databasePath);
+  weatherService = createWeatherService(path.join(app.getPath('userData'), 'weather-cache.json'));
   desktopOrganizer = createDesktopOrganizer({
     desktopDirectory: app.getPath('desktop'),
     additionalScanDirectories: [path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop')],
@@ -744,6 +766,7 @@ app.on('will-quit', () => {
   fileIndex = null;
   desktopOrganizer = null;
   settingsStore = null;
+  weatherService = null;
   tray?.destroy();
   tray = null;
 });

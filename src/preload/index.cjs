@@ -72,6 +72,12 @@ const api = Object.freeze({
     stowShortcuts: () => ipcRenderer.invoke('dd:desktop:shortcut-stow'),
     restoreShortcuts: () => ipcRenderer.invoke('dd:desktop:shortcut-restore'),
   }),
+  weather: Object.freeze({
+    get: (city, force = false) => ipcRenderer.invoke('dd:weather:get', { city, force }),
+  }),
+  media: Object.freeze({
+    control: (action) => ipcRenderer.invoke('dd:media:control', { action }),
+  }),
   settings: Object.freeze({
     get: () => ipcRenderer.invoke('dd:settings:get'),
     set: (key, value) => ipcRenderer.invoke('dd:settings:set', { key, value }),
