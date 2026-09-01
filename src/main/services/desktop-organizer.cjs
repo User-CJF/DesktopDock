@@ -218,6 +218,54 @@ function createDesktopOrganizer(options) {
     }
   }
 
+  async function importShortcuts(sourcePaths = []) {
+    if (!Array.isArray(sourcePaths) || sourcePaths.length > 100) throw new Error('一次最多导入 100 个快捷方式');
+    await fs.promises.mkdir(shortcutVaultDirectory, { recursive: true });
+    const manifest = await readShortcutManifest();
+    const reserved = new Set();
+    const imported = [];
+    const skipped = [];
+    const importedBaseNames = new Set();
+    for (const sourceValue of sourcePaths) {
+      if (typeof sourceValue !== 'string' || !sourceValue.trim()) continue;
+      const source = path.resolve(sourceValue);
+      const extension = path.extname(source).toLowerCase();
+      if (!SHORTCUT_EXTENSIONS.has(extension)) {
+        skipped.push({ name: path.basename(source), reason: '仅支持 Windows 快捷方式' });
+        continue;
+      }
+      let stat;
+      try {
+        stat = await fs.promises.stat(source);
+      } catch {
+        skipped.push({ name: path.basename(source), reason: '文件不可访问' });
+        continue;
+      }
+      if (!stat.isFile()) continue;
+      if (path.dirname(source).toLowerCase() === shortcutVaultDirectory.toLowerCase()) {
+        const existing = (await listShortcuts()).find((item) => item.name === path.parse(source).name && item.location === 'stowed');
+        if (existing) imported.push(existing);
+        continue;
+      }
+      const destination = await availableDestination(shortcutVaultDirectory, path.basename(source), reserved);
+      const fromUserDesktop = path.dirname(source).toLowerCase() === desktopDirectory.toLowerCase();
+      try {
+        if (fromUserDesktop) await moveFile(source, destination);
+        else await fs.promises.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+        const movement = { originalPath: source, newPath: destination, fileName: path.basename(destination) };
+        manifest.items = manifest.items.filter((entry) => path.resolve(entry.newPath).toLowerCase() !== destination.toLowerCase());
+        manifest.items.push({ ...movement, importedAt: new Date().toISOString(), copied: !fromUserDesktop });
+        importedBaseNames.add(path.parse(destination).name.toLocaleLowerCase('zh-CN'));
+      } catch (error) {
+        skipped.push({ name: path.basename(source), reason: error.message });
+      }
+    }
+    await writeShortcutManifest(manifest);
+    const shortcuts = await listShortcuts();
+    imported.push(...shortcuts.filter((item) => item.location === 'stowed' && importedBaseNames.has(item.name.toLocaleLowerCase('zh-CN'))));
+    return { success: true, imported: [...new Map(imported.map((item) => [item.id, item])).values()], skipped };
+  }
+
   async function restoreShortcuts() {
     const manifest = await readShortcutManifest();
     const stowed = await shortcutEntries(shortcutVaultDirectory, 'stowed', true, 'user');
@@ -366,6 +414,7 @@ function createDesktopOrganizer(options) {
     restorePoints,
     listShortcuts,
     stowShortcuts,
+    importShortcuts,
     restoreShortcuts,
     launchShortcut,
     shortcutIconSource,

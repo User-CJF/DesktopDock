@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const api = Object.freeze({
   isElectron: true,
@@ -45,10 +45,12 @@ const api = Object.freeze({
     },
   }),
   files: Object.freeze({
+    pathForFile: (file) => webUtils.getPathForFile(file),
     list: (limit) => ipcRenderer.invoke('dd:file:list', { limit }),
     search: (query, limit) => ipcRenderer.invoke('dd:file:search', { query, limit }),
     rescan: () => ipcRenderer.invoke('dd:file:rescan'),
     open: (fileId) => ipcRenderer.invoke('dd:file:open', { fileId }),
+    thumbnail: (fileId) => ipcRenderer.invoke('dd:file:thumbnail', { fileId }),
     reveal: (fileId) => ipcRenderer.invoke('dd:file:reveal', { fileId }),
     clearRecent: () => ipcRenderer.invoke('dd:file:clear-recent'),
     roots: () => ipcRenderer.invoke('dd:file:roots'),
@@ -56,11 +58,23 @@ const api = Object.freeze({
     removeRoot: (rootId) => ipcRenderer.invoke('dd:file:remove-root', { rootId }),
     openRoot: (rootId) => ipcRenderer.invoke('dd:file:open-root', { rootId }),
     status: () => ipcRenderer.invoke('dd:file:status'),
+    rename: (fileId, name) => ipcRenderer.invoke('dd:file:rename', { fileId, name }),
+    delete: (fileId) => ipcRenderer.invoke('dd:file:delete', { fileId }),
+    import: (rootId, paths) => ipcRenderer.invoke('dd:file:import', { rootId, paths }),
     onUpdated: (callback) => {
       const listener = (_event, status) => callback(status);
       ipcRenderer.on('dd:file-index:updated', listener);
       return () => ipcRenderer.removeListener('dd:file-index:updated', listener);
     },
+  }),
+  board: Object.freeze({
+    get: () => ipcRenderer.invoke('dd:board:get'),
+    createCategory: (category) => ipcRenderer.invoke('dd:board:category-create', category),
+    updateCategory: (category) => ipcRenderer.invoke('dd:board:category-update', category),
+    deleteCategory: (id) => ipcRenderer.invoke('dd:board:category-delete', { id }),
+    assign: (shortcutId, categoryId) => ipcRenderer.invoke('dd:board:assign', { shortcutId, categoryId }),
+    import: (paths, categoryId = null) => ipcRenderer.invoke('dd:board:import', { paths, categoryId }),
+    pick: (categoryId = null) => ipcRenderer.invoke('dd:board:pick', { categoryId }),
   }),
   desktop: Object.freeze({
     scan: () => ipcRenderer.invoke('dd:desktop:scan'),
@@ -74,9 +88,19 @@ const api = Object.freeze({
   }),
   weather: Object.freeze({
     get: (city, force = false) => ipcRenderer.invoke('dd:weather:get', { city, force }),
+    getByCoordinates: (latitude, longitude, force = false) => ipcRenderer.invoke('dd:weather:get-coordinates', { latitude, longitude, force }),
   }),
   media: Object.freeze({
     control: (action) => ipcRenderer.invoke('dd:media:control', { action }),
+    status: () => ipcRenderer.invoke('dd:media:status'),
+  }),
+  todo: Object.freeze({
+    list: () => ipcRenderer.invoke('dd:todo:list'),
+    create: (todo) => ipcRenderer.invoke('dd:todo:create', todo),
+    update: (todo) => ipcRenderer.invoke('dd:todo:update', todo),
+    delete: (id) => ipcRenderer.invoke('dd:todo:delete', { id }),
+    reorder: (ids) => ipcRenderer.invoke('dd:todo:reorder', { ids }),
+    pickAttachments: () => ipcRenderer.invoke('dd:todo:pick-attachments'),
   }),
   settings: Object.freeze({
     get: () => ipcRenderer.invoke('dd:settings:get'),

@@ -3,26 +3,31 @@
     <header class="dock-titlebar">
       <div class="dock-brand">
         <span class="dock-brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span>
-        <span><strong>桌面舱</strong><small id="dockStatus">正在连接桌面</small></span>
+        <span><strong>桌面舱</strong><small id="dockStatus">正在读取桌面</small></span>
       </div>
-      <div class="dock-window-actions" aria-label="状态栏控制">
-        <button type="button" data-action="new-category" title="新建分类" aria-label="新建应用分类"><span class="fluent-icon" aria-hidden="true">&#xE710;</span></button>
-        <button type="button" data-action="open-settings" title="设置" aria-label="打开桌面舱设置"><span class="fluent-icon" aria-hidden="true">&#xE713;</span></button>
-        <button type="button" data-action="refresh-all" title="刷新" aria-label="刷新桌面数据"><span class="fluent-icon" aria-hidden="true">&#xE72C;</span></button>
-        <button type="button" data-action="hide-dock" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button>
+      <time id="dockClock" aria-label="当前时间"></time>
+      <div class="dock-window-actions" aria-label="窗口操作">
+        <button type="button" data-action="refresh" title="刷新" aria-label="刷新当前内容"><span class="fluent-icon" aria-hidden="true">&#xE72C;</span></button>
+        <button type="button" data-action="hide" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button>
       </div>
     </header>
 
-    <section class="dock-search" aria-label="快速搜索">
+    <section class="dock-search" aria-label="搜索">
       <span class="fluent-icon" aria-hidden="true">&#xE721;</span>
-      <label class="sr-only" for="dockSearch">搜索应用、快捷方式和文件</label>
-      <input id="dockSearch" type="search" autocomplete="off" placeholder="搜索应用、快捷方式和文件" />
+      <label class="sr-only" for="dockSearch">搜索当前模块</label>
+      <input id="dockSearch" type="search" autocomplete="off" placeholder="搜索快捷方式" />
       <kbd>Alt + Space</kbd>
     </section>
-    <section class="dock-search-results" id="dockSearchResults" aria-label="搜索结果" hidden></section>
 
     <section class="dock-content" id="dockContent" tabindex="-1" aria-live="polite"></section>
-    <footer class="dock-summary" id="dockSummary" aria-live="polite"></footer>
+
+    <nav class="dock-nav" id="dockNav" aria-label="桌面舱模块">
+      <button type="button" class="active" data-nav="desktop"><span class="fluent-icon" aria-hidden="true">&#xE80F;</span><span>桌面</span></button>
+      <button type="button" data-nav="todo"><span class="fluent-icon" aria-hidden="true">&#xE73E;</span><span>待办</span></button>
+      <button type="button" data-nav="files"><span class="fluent-icon" aria-hidden="true">&#xED25;</span><span>文件</span></button>
+      <button type="button" data-nav="widgets"><span class="fluent-icon" aria-hidden="true">&#xE950;</span><span>组件</span></button>
+      <button type="button" data-nav="settings"><span class="fluent-icon" aria-hidden="true">&#xE713;</span><span>设置</span></button>
+    </nav>
   </main>
 
   <div class="dock-dialog-layer" id="dockDialogLayer" hidden>

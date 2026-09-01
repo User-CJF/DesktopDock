@@ -1,432 +1,401 @@
 const api = window.desktopDock;
+const isElectron = Boolean(api?.isElectron);
+document.body.classList.toggle('is-electron', isElectron);
 
-const ICONS = {
-  apps: '&#xE80A;', search: '&#xE721;', refresh: '&#xE72C;', hide: '&#xE738;',
-  settings: '&#xE713;', add: '&#xE710;', more: '&#xE712;', folder: '&#xE8B7;',
-  desktop: '&#xE8FC;', file: '&#xE8A5;', warning: '&#xE7BA;',
-  previous: '&#xE892;', play: '&#xE768;', next: '&#xE893;', volume: '&#xE767;',
-  sun: '&#xE706;', cloud: '&#xE753;', rain: '&#xE9C4;', snow: '&#xE9C8;',
-  location: '&#xE707;', edit: '&#xE70F;', trash: '&#xE74D;', pin: '&#xE718;',
-};
-
-const demoCategories = [
-  { id: 'office', name: '办公', color: '#4f6bff', count: 1, isPreset: 1 },
-  { id: 'dev', name: '开发', color: '#7953c6', count: 1, isPreset: 1 },
-  { id: 'social', name: '社交', color: '#087f9b', count: 1, isPreset: 1 },
-  { id: 'tools', name: '工具', color: '#a56300', count: 1, isPreset: 1 },
-];
-const demoApps = [
-  { id: 'app_demo_01', name: 'Visual Studio Code', category: '开发', pinned: 1 },
-  { id: 'app_demo_02', name: 'Chrome', category: '工具', pinned: 1 },
-  { id: 'app_demo_03', name: '微信', category: '社交', pinned: 0 },
-  { id: 'app_demo_04', name: 'WPS Office', category: '办公', pinned: 0 },
-];
-const demoShortcuts = [
-  { id: 'shortcut_demo_01', name: '浏览器', location: 'desktop' },
-  { id: 'shortcut_demo_02', name: '代码编辑器', location: 'desktop' },
-  { id: 'shortcut_demo_03', name: '音乐', location: 'stowed' },
-];
-const demoFiles = [
-  { id: 'file_demo_01', name: 'DesktopDock 设计说明.md', extension: '.md', modifiedAt: new Date().toISOString(), rootName: '文档' },
-  { id: 'file_demo_02', name: '界面预览.png', extension: '.png', modifiedAt: new Date().toISOString(), rootName: '图片' },
-];
-
-const state = {
-  loading: Boolean(api?.isElectron), busy: false, error: null,
-  apps: api?.isElectron ? [] : demoApps,
-  categories: api?.isElectron ? [] : demoCategories,
-  shortcuts: api?.isElectron ? [] : demoShortcuts,
-  files: api?.isElectron ? [] : demoFiles,
-  roots: api?.isElectron ? [] : [{ id: 'documents', name: '文档' }, { id: 'downloads', name: '下载' }],
-  organizer: { desktopShortcuts: 3, stowedShortcuts: 1, publicShortcuts: 0, files: 4, folders: 2, restorePoints: [] },
-  settings: { theme: 'dark', autoStart: false, startMinimized: false, closeAfterLaunch: true, weatherCity: '深圳' },
-  index: { totalApps: demoApps.length, lastScanAt: null },
-  weather: api?.isElectron ? null : {
-    city: '深圳', locationName: '深圳 · 广东', updatedAt: new Date().toISOString(),
-    current: { temperature: 31, apparentTemperature: 34, relativeHumidity: 69, precipitationProbability: 18, weatherCode: 2, windSpeed: 9 },
-    hourly: Array.from({ length: 6 }, (_, index) => ({ time: new Date(Date.now() + index * 3600000).toISOString(), temperature: 30 - Math.floor(index / 2), weatherCode: index < 3 ? 2 : 1, precipitationProbability: 18 })),
-  },
-  weatherLoading: false, weatherError: null, searchIndex: 0, searchResults: [],
-};
-
-const appIconMemory = new Map();
-const shortcutIconMemory = new Map();
-let iconGeneration = 0;
-let toastTimer;
-let searchTimer;
-let dialogReturnFocus = null;
-
-const dock = document.querySelector('#desktopApp');
-const dockStatus = document.querySelector('#dockStatus');
-const dockSearch = document.querySelector('#dockSearch');
-const dockSearchResults = document.querySelector('#dockSearchResults');
-const dockSummary = document.querySelector('#dockSummary');
-const dockContent = document.querySelector('#dockContent');
+const content = document.querySelector('#dockContent');
+const status = document.querySelector('#dockStatus');
+const clock = document.querySelector('#dockClock');
+const nav = document.querySelector('#dockNav');
+const search = document.querySelector('#dockSearch');
 const dialogLayer = document.querySelector('#dockDialogLayer');
 const dialog = document.querySelector('#dockDialog');
 const toast = document.querySelector('#dockToast');
 
-if (api?.isElectron) document.body.classList.add('is-electron');
+const ICONS = Object.freeze({
+  add: '&#xE710;', more: '&#xE712;', edit: '&#xE70F;', trash: '&#xE74D;', folder: '&#xE8B7;',
+  warehouse: '&#xE7B8;', move: '&#xE8DE;', refresh: '&#xE72C;', check: '&#xE73E;', calendar: '&#xE787;',
+  attach: '&#xE723;', play: '&#xE768;', pause: '&#xE769;', previous: '&#xE892;', next: '&#xE893;',
+  volume: '&#xE767;', search: '&#xE721;', grid: '&#xF0E2;', list: '&#xEA37;', open: '&#xE8A7;', reveal: '&#xE838;',
+  sun: '&#xE706;', cloud: '&#xE753;', rain: '&#xE9C4;', settings: '&#xE713;', info: '&#xE946;', close: '&#xE711;',
+});
+const COLORS = ['#1677ff', '#00a870', '#d97706', '#d84a4a', '#7c5ce7', '#168aad', '#697386', '#c2417d'];
+const TODO_COLORS = ['blue', 'green', 'amber', 'red', 'purple', 'teal', 'slate', 'pink'];
+const WEATHER_LABELS = { 0: '晴', 1: '大部晴朗', 2: '多云', 3: '阴', 45: '有雾', 48: '冻雾', 51: '毛毛雨', 53: '毛毛雨', 55: '较强毛毛雨', 61: '小雨', 63: '中雨', 65: '大雨', 71: '小雪', 73: '中雪', 75: '大雪', 80: '阵雨', 81: '阵雨', 82: '强阵雨', 95: '雷雨' };
 
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
-}
+const state = {
+  page: 'desktop', query: '', loading: true,
+  todoBatch: false, todoSelected: new Set(),
+  board: { shortcuts: [], categories: [] }, todos: [], files: [], roots: [], fileRootId: null, fileSort: 'modified',
+  weather: null, weatherError: null, media: { available: false },
+  settings: { theme: 'dark', autoStowShortcuts: true, fileLayout: 'grid', weatherLayout: 'standard', showTodo: true, showWeather: true, showMedia: true, showFiles: true },
+};
 
-function icon(glyph) { return `<span class="fluent-icon" aria-hidden="true">${glyph}</span>`; }
+const esc = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+const icon = (glyph) => `<span class="fluent-icon" aria-hidden="true">${glyph}</span>`;
+const formatDate = (value) => value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
+const formatSize = (bytes = 0) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+const resultOk = (result) => !isElectron || result?.success !== false;
 
-function itemMark(name) {
-  const clean = String(name || '').trim();
-  if (!clean) return '?';
-  if (/^[\u3400-\u9fff]/u.test(clean)) return clean.slice(0, 1);
-  const words = clean.split(/\s+/).filter(Boolean);
-  return (words.length > 1 ? words.slice(0, 2).map((word) => word[0]).join('') : clean.slice(0, 2)).toUpperCase();
-}
-
-function itemIcon(item, kind) {
-  const memory = kind === 'shortcut' ? shortcutIconMemory : appIconMemory;
-  const image = memory.get(item.id);
-  return `<span class="item-icon ${image ? 'has-image' : ''}" data-${kind}-icon="${escapeHtml(item.id)}" aria-hidden="true">${image ? `<img src="${image}" alt="" />` : escapeHtml(itemMark(item.name))}</span>`;
-}
-
-function fileMark(file) { return escapeHtml((file.extension || 'FILE').replace('.', '').slice(0, 3).toUpperCase()); }
-
-function fileType(file) {
-  const types = { '.md': 'Markdown', '.doc': 'Word', '.docx': 'Word', '.xls': 'Excel', '.xlsx': 'Excel', '.ppt': '演示文稿', '.pptx': '演示文稿', '.pdf': 'PDF', '.png': '图片', '.jpg': '图片', '.zip': '压缩文件' };
-  return types[file.extension] || (file.extension ? `${file.extension.slice(1).toUpperCase()} 文件` : '文件');
-}
-
-function weatherMeta(code) {
-  if (code === 0) return { label: '晴', glyph: ICONS.sun };
-  if ([1, 2, 3].includes(code)) return { label: code === 1 ? '晴间多云' : '多云', glyph: ICONS.cloud };
-  if ([45, 48].includes(code)) return { label: '雾', glyph: ICONS.cloud };
-  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(code)) return { label: code >= 95 ? '雷阵雨' : '有雨', glyph: ICONS.rain };
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return { label: '有雪', glyph: ICONS.snow };
-  return { label: '天气未知', glyph: ICONS.cloud };
-}
-
-function widgetHeader(glyph, title, actions = '') {
-  return `<header class="widget-header"><h2>${icon(glyph)}<span>${escapeHtml(title)}</span></h2>${actions ? `<div class="widget-actions">${actions}</div>` : ''}</header>`;
-}
-
-function weatherWidget() {
-  if (state.loading || state.weatherLoading) return `<section class="widget weather-widget loading-widget">${widgetHeader(ICONS.location, state.settings.weatherCity, `<button data-action="refresh-weather" aria-label="刷新天气">${icon(ICONS.refresh)}</button>`)}<div class="widget-empty">正在更新天气…</div></section>`;
-  if (!state.weather) return `<section class="widget weather-widget">${widgetHeader(ICONS.location, state.settings.weatherCity, `<button data-action="open-settings" aria-label="设置天气城市">${icon(ICONS.settings)}</button>`)}<div class="widget-empty"><b>天气暂时不可用</b><span>${escapeHtml(state.weatherError || '请检查网络或修改城市')}</span><button data-action="refresh-weather">重试</button></div></section>`;
-  const current = state.weather.current;
-  const meta = weatherMeta(current.weatherCode);
-  const hourly = state.weather.hourly || [];
-  return `<section class="widget weather-widget">
-    ${widgetHeader(ICONS.location, state.weather.locationName || state.weather.city, `<button data-action="refresh-weather" aria-label="刷新天气" title="刷新天气">${icon(ICONS.refresh)}</button>`)}
-    <div class="weather-current"><span class="weather-symbol">${icon(meta.glyph)}</span><strong>${Math.round(current.temperature)}°</strong><span><b>${escapeHtml(meta.label)}</b><small>体感 ${Math.round(current.apparentTemperature)}°</small></span></div>
-    <div class="weather-facts"><span>湿度 <b>${Math.round(current.relativeHumidity)}%</b></span><span>风速 <b>${Math.round(current.windSpeed)} km/h</b></span><span>降水 <b>${Math.round(current.precipitationProbability ?? 0)}%</b></span></div>
-    <div class="hourly-strip">${hourly.map((item) => { const itemMeta = weatherMeta(item.weatherCode); return `<div><time>${new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(item.time))}</time>${icon(itemMeta.glyph)}<b>${Math.round(item.temperature)}°</b></div>`; }).join('')}</div>
-    ${state.weather.stale ? '<p class="widget-note">当前显示最近一次缓存，联网后自动更新。</p>' : ''}
-  </section>`;
-}
-
-function clockWidget() {
-  return `<section class="widget clock-widget">${widgetHeader(ICONS.apps, '桌面舱')}<div class="clock-row"><span class="clock-calendar">${icon(ICONS.apps)}</span><div><strong id="clockTime"></strong><time id="clockDate"></time></div></div></section>`;
-}
-
-function mediaWidget() {
-  return `<section class="widget media-widget">${widgetHeader(ICONS.volume, '系统媒体')}<div class="record-art"><span></span></div><div class="media-copy"><b>Windows 播放控制</b><small>控制当前活动的音乐或视频播放器</small></div><div class="media-controls"><button data-media="previous" aria-label="上一首">${icon(ICONS.previous)}</button><button class="media-play" data-media="playPause" aria-label="播放或暂停">${icon(ICONS.play)}</button><button data-media="next" aria-label="下一首">${icon(ICONS.next)}</button><button data-media="mute" aria-label="静音">${icon(ICONS.volume)}</button></div></section>`;
-}
-
-function appTile(item) {
-  return `<button class="app-tile" type="button" data-app="${escapeHtml(item.id)}" title="打开 ${escapeHtml(item.name)}">${itemIcon(item, 'app')}<span>${escapeHtml(item.name)}</span></button>`;
-}
-
-function categoryWidget(category) {
-  const items = state.apps.filter((item) => item.category === category.name).slice(0, 12);
-  const actions = `<button data-action="assign-category" data-category-id="${escapeHtml(category.id)}" aria-label="管理${escapeHtml(category.name)}分类">${icon(ICONS.add)}</button><button data-action="category-menu" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(category.name)}分类选项">${icon(ICONS.more)}</button>`;
-  return `<section class="widget category-widget" style="--category-color:${escapeHtml(category.color || '#697386')}">${widgetHeader(ICONS.folder, category.name, actions)}${items.length ? `<div class="app-icon-grid">${items.map(appTile).join('')}</div>` : `<div class="widget-empty compact"><b>此分类暂无应用</b><button data-action="assign-category" data-category-id="${escapeHtml(category.id)}">添加应用</button></div>`}${category.count > 12 ? `<button class="widget-more" data-action="assign-category" data-category-id="${escapeHtml(category.id)}">管理全部 ${category.count} 个</button>` : ''}</section>`;
-}
-
-function shortcutWidget() {
-  const actions = `<button data-action="desktop-tools" aria-label="桌面快捷方式管理">${icon(ICONS.more)}</button>`;
-  return `<section class="widget shortcut-widget">${widgetHeader(ICONS.desktop, '桌面快捷方式', actions)}${state.shortcuts.length ? `<div class="app-icon-grid">${state.shortcuts.slice(0, 12).map((item) => `<button class="app-tile" data-shortcut="${escapeHtml(item.id)}" title="打开 ${escapeHtml(item.name)}">${itemIcon(item, 'shortcut')}<span>${escapeHtml(item.name)}</span></button>`).join('')}</div>` : '<div class="widget-empty compact"><b>桌面已清爽</b><span>收纳的快捷方式会保留在这里。</span></div>'}<div class="shortcut-status"><span>${state.organizer.desktopShortcuts} 个在桌面</span><span>${state.organizer.stowedShortcuts} 个已收纳</span></div></section>`;
-}
-
-function fileWidget() {
-  const rootItems = state.roots.slice(0, 4).map((root) => `<button class="folder-row" data-root="${escapeHtml(root.id)}">${icon(ICONS.folder)}<span>${escapeHtml(root.name)}</span></button>`).join('');
-  const files = state.files.slice(0, 7).map((file) => `<button class="file-row" data-file="${escapeHtml(file.id)}"><span class="file-mark">${fileMark(file)}</span><span><b>${escapeHtml(file.name)}</b><small>${escapeHtml(file.rootName || fileType(file))}</small></span></button>`).join('');
-  return `<section class="widget file-widget">${widgetHeader(ICONS.file, '文件', `<button data-action="add-root" aria-label="添加文件夹组件">${icon(ICONS.add)}</button><button data-action="refresh-files" aria-label="刷新文件">${icon(ICONS.refresh)}</button>`)}<div class="folder-list">${rootItems}</div>${files ? `<div class="file-list">${files}</div>` : '<div class="widget-empty compact"><b>暂无最近文件</b></div>'}</section>`;
-}
-
-function renderBoard() {
-  const categories = state.categories.length ? state.categories : demoCategories;
-  return `<div class="widget-board"><div class="widget-column">${weatherWidget()}${categories.filter((_item, index) => index % 2 === 0).map(categoryWidget).join('')}${shortcutWidget()}</div><div class="widget-column">${clockWidget()}${mediaWidget()}${categories.filter((_item, index) => index % 2 === 1).map(categoryWidget).join('')}${fileWidget()}</div></div>`;
-}
-
-function render() {
-  dockContent.innerHTML = state.error ? `<section class="widget full-widget"><div class="widget-empty">${icon(ICONS.warning)}<b>桌面数据暂时不可用</b><span>${escapeHtml(state.error)}</span><button data-action="refresh-all">重新连接</button></div></section>` : renderBoard();
-  const managed = state.organizer.desktopShortcuts + state.organizer.stowedShortcuts;
-  dockStatus.textContent = state.error ? '需要重试' : state.loading ? '正在同步桌面' : '已吸附桌面右侧';
-  dockSummary.innerHTML = `<span><i class="status-dot ${state.error ? 'error' : ''}"></i>${state.loading ? '正在读取本机数据' : `${state.index.totalApps} 个应用 · ${managed} 个快捷方式 · 本地运行`}</span><button data-action="open-settings">设置</button>`;
-  updateClock();
-  void hydrateIcons();
-}
-
-function updateClock() {
-  const now = new Date();
-  const time = document.querySelector('#clockTime');
-  const date = document.querySelector('#clockDate');
-  if (time) time.textContent = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
-  if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(now);
-}
-
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
-}
-
+let toastTimer;
 function showToast(message, tone = 'success') {
-  clearTimeout(toastTimer);
   toast.textContent = message;
-  toast.classList.toggle('error', tone === 'error');
-  toast.classList.add('visible');
-  toastTimer = setTimeout(() => toast.classList.remove('visible'), 3200);
+  toast.className = `dock-toast visible ${tone}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.className = 'dock-toast'; }, 2600);
 }
 
-function openDialog(contents, wide = false) {
-  dialogReturnFocus = document.activeElement;
-  dialog.innerHTML = contents;
-  dialog.classList.toggle('wide', wide);
+function openDialog(title, description, body, footer = '') {
+  dialog.innerHTML = `<header class="dialog-header"><div><h2 id="dockDialogTitle">${esc(title)}</h2>${description ? `<p>${esc(description)}</p>` : ''}</div><button data-action="close-dialog" aria-label="关闭">${icon(ICONS.close)}</button></header><div class="dialog-body">${body}</div>${footer ? `<footer class="dialog-footer">${footer}</footer>` : ''}`;
   dialogLayer.hidden = false;
-  dock.inert = true;
-  dialog.querySelector('input, button, select')?.focus();
+  document.querySelector('#desktopApp').inert = true;
+  setTimeout(() => dialog.querySelector('input, button, select, textarea')?.focus(), 20);
 }
 
 function closeDialog() {
   dialogLayer.hidden = true;
   dialog.innerHTML = '';
-  dialog.classList.remove('wide');
-  dock.inert = false;
-  dialogReturnFocus?.focus?.();
-  dialogReturnFocus = null;
+  document.querySelector('#desktopApp').inert = false;
 }
 
-function dialogShell(title, detail, body, footer) {
-  return `<header class="dialog-header"><h2 id="dockDialogTitle">${escapeHtml(title)}</h2><p>${escapeHtml(detail)}</p></header><div class="dialog-body">${body}</div><footer class="dialog-footer">${footer}</footer>`;
+function updateClock() {
+  const now = new Date();
+  clock.textContent = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
+  clock.dateTime = now.toISOString();
 }
 
-function openCategoryEditor(categoryId = null) {
-  const category = state.categories.find((item) => item.id === categoryId);
-  if (category?.isPreset) return showToast('默认分类不可改名，可继续为它添加应用', 'error');
-  const icons = ['📄', '🎨', '💻', '🎮', '💬', '🔧', '📁', '📚', '🧰', '🎬', '🗂️', '🧪'];
-  const colors = ['#4f6bff', '#7953c6', '#d95361', '#168a74', '#087f9b', '#a56300', '#697386'];
-  const body = `<form id="categoryForm" class="dialog-form"><label>分类名称<input name="name" maxlength="10" required value="${escapeHtml(category?.name || '')}" placeholder="例如：学习"></label><label>图标<select name="icon">${icons.map((value) => `<option value="${value}" ${category?.icon === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><fieldset><legend>分类颜色</legend><div class="color-options">${colors.map((value) => `<label><input type="radio" name="color" value="${value}" ${(category?.color || colors[0]).toLowerCase() === value ? 'checked' : ''}><span style="--swatch:${value}"></span></label>`).join('')}</div></fieldset></form>`;
-  openDialog(dialogShell(category ? '编辑分类' : '新建分类', '分类会作为独立组件显示在右侧桌面舱中。', body, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-category" data-category-id="${escapeHtml(categoryId || '')}">${category ? '保存修改' : '创建分类'}</button>`));
+function shortcutTile(item) {
+  return `<div class="shortcut-tile" draggable="true" tabindex="0" data-shortcut="${esc(item.id)}" title="双击打开 ${esc(item.name)}">
+    <span class="shortcut-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span>
+    <span class="shortcut-name">${esc(item.name)}</span>
+    <button type="button" data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)} 到分类">${icon(ICONS.more)}</button>
+  </div>`;
 }
 
-function openAssignment(categoryId) {
-  const category = state.categories.find((item) => item.id === categoryId);
-  if (!category) return;
-  const sorted = [...state.apps].sort((a, b) => Number(b.category === category.name) - Number(a.category === category.name) || a.name.localeCompare(b.name, 'zh-CN'));
-  const list = sorted.map((item) => `<label class="assignment-row"><input type="checkbox" data-assign-app="${escapeHtml(item.id)}" ${item.category === category.name ? 'checked' : ''}>${itemIcon(item, 'app')}<span><b>${escapeHtml(item.name)}</b><small>当前：${escapeHtml(item.category || '其他')}</small></span></label>`).join('');
-  openDialog(dialogShell(`管理“${category.name}”`, '勾选要放入此分类的应用；取消已归类应用会移回“其他”。', `<div class="assignment-list">${list || '<div class="widget-empty"><b>未扫描到应用</b></div>'}</div>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-assignment" data-category-id="${escapeHtml(category.id)}">保存分类</button>`), true);
+function emptyDrop(message) {
+  return `<div class="drop-empty">${icon(ICONS.move)}<b>${esc(message)}</b><span>拖入桌面快捷方式，或使用右上角按钮</span></div>`;
 }
 
-function openCategoryMenu(categoryId) {
-  const category = state.categories.find((item) => item.id === categoryId);
-  if (!category) return;
-  const customActions = category.isPreset ? '' : `<button data-action="edit-category" data-category-id="${escapeHtml(category.id)}">${icon(ICONS.edit)}<span><b>编辑分类</b><small>修改名称、图标与颜色</small></span></button><button class="danger-row" data-action="delete-category" data-category-id="${escapeHtml(category.id)}">${icon(ICONS.trash)}<span><b>删除分类</b><small>其中应用将移回“其他”</small></span></button>`;
-  openDialog(dialogShell(category.name, `${category.count || 0} 个应用`, `<div class="action-list"><button data-action="assign-category" data-category-id="${escapeHtml(category.id)}">${icon(ICONS.pin)}<span><b>管理应用</b><small>添加或移出此分类</small></span></button>${customActions}</div>`, '<button data-action="close-dialog">关闭</button>'));
+function boardSection(category = null) {
+  const categoryId = category?.id || '';
+  const items = state.board.shortcuts.filter((item) => (item.categoryId || '') === categoryId && item.name.toLocaleLowerCase('zh-CN').includes(state.query));
+  const title = category?.name || '桌面仓';
+  const tools = category
+    ? `<button data-action="edit-category" data-category-id="${esc(category.id)}" title="编辑分类">${icon(ICONS.edit)}</button><button data-action="delete-category" data-category-id="${esc(category.id)}" title="删除分类">${icon(ICONS.trash)}</button>`
+    : `<button data-action="import-shortcuts" title="选择快捷方式">${icon(ICONS.add)}</button>`;
+  return `<section class="board-section ${category ? '' : 'warehouse'}" data-drop-category="${esc(categoryId)}" style="--group-color:${esc(category?.color || '#1677ff')}">
+    <header><div><span class="group-mark">${icon(category ? ICONS.folder : ICONS.warehouse)}</span><span><h2>${esc(title)}</h2><small>${items.length} 个快捷方式</small></span></div><div class="section-actions">${tools}</div></header>
+    ${items.length ? `<div class="shortcut-grid">${items.map(shortcutTile).join('')}</div>` : emptyDrop(category ? `把快捷方式拖到“${title}”` : '桌面仓是所有快捷方式的入口')}
+  </section>`;
 }
 
-function openDesktopTools() {
-  const body = `<div class="action-list"><button data-action="stow-shortcuts" ${state.organizer.desktopShortcuts ? '' : 'disabled'}>${icon(ICONS.hide)}<span><b>收纳桌面快捷方式</b><small>仅移动个人快捷方式，系统图标保持原位</small></span></button><button data-action="restore-shortcuts" ${state.organizer.stowedShortcuts ? '' : 'disabled'}>${icon(ICONS.desktop)}<span><b>恢复快捷方式</b><small>把已收纳项目安全恢复到桌面</small></span></button><button data-action="organize-files" ${state.organizer.files ? '' : 'disabled'}>${icon(ICONS.folder)}<span><b>整理普通文件</b><small>先建立还原点，再按类型移动</small></span></button><button data-action="restore-files" ${state.organizer.restorePoints?.length ? '' : 'disabled'}>${icon(ICONS.refresh)}<span><b>撤销文件整理</b><small>恢复最近一次整理结果</small></span></button></div>`;
-  openDialog(dialogShell('桌面整理', `${state.organizer.desktopShortcuts} 个快捷方式和 ${state.organizer.files} 个普通文件可处理`, body, '<button data-action="close-dialog">关闭</button>'));
+function renderDesktop() {
+  const managed = state.board.shortcuts.filter((item) => item.location !== 'public').length;
+  const publicCount = state.board.shortcuts.filter((item) => item.location === 'public').length;
+  content.innerHTML = `<div class="page-head"><div><h1>桌面</h1><p>${managed} 个已收纳${publicCount ? ` · ${publicCount} 个公共桌面只读` : ''}</p></div><button class="primary-button" data-action="new-category">${icon(ICONS.add)}新建分类</button></div>
+    <div class="desktop-note">${icon(ICONS.info)}<span><b>只在桌面右侧显示</b><small>窗口不置顶，打开其他软件后会自然被覆盖。系统图标不会被移动。</small></span></div>
+    ${boardSection()}
+    <div class="category-heading"><h2>我的分类</h2><span>拖入即可归类</span></div>
+    <div class="category-stack">${state.board.categories.length ? state.board.categories.map(boardSection).join('') : `<button class="create-empty" data-action="new-category">${icon(ICONS.add)}<span><b>创建第一个分类</b><small>分类由你决定，随时可以改名或删除</small></span></button>`}</div>`;
+  hydrateShortcutIcons();
 }
 
-function settingToggle(key, title, detail) {
-  return `<div class="setting-row"><span><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)}</small></span><button class="toggle ${state.settings[key] ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings[key])}" data-setting="${key}" aria-label="${escapeHtml(title)}"></button></div>`;
+function todoItem(item) {
+  const selected = state.todoSelected.has(item.id);
+  return `<article class="todo-item ${item.completed ? 'completed' : ''} ${selected ? 'selected' : ''}" draggable="true" data-todo-id="${esc(item.id)}" data-color="${esc(item.color)}">
+    <button class="todo-check" data-action="${state.todoBatch ? 'select-todo' : 'toggle-todo'}" data-todo-id="${esc(item.id)}" aria-label="${state.todoBatch ? '选择' : (item.completed ? '恢复' : '完成')} ${esc(item.title)}">${(state.todoBatch ? selected : item.completed) ? icon(ICONS.check) : ''}</button>
+    <button class="todo-copy" data-action="edit-todo" data-todo-id="${esc(item.id)}"><b>${esc(item.title)}</b><span>${item.dueAt ? `${icon(ICONS.calendar)} ${formatDate(item.dueAt)}` : '无截止日期'}${item.recurrence !== 'none' ? ` · ${esc({ daily: '每天', weekly: '每周', monthly: '每月' }[item.recurrence])}` : ''}${item.attachments.length ? ` · ${item.attachments.length} 个附件` : ''}</span></button>
+    <button class="icon-button" data-action="delete-todo" data-todo-id="${esc(item.id)}" aria-label="删除任务">${icon(ICONS.trash)}</button>
+  </article>`;
 }
 
-function openSettings() {
-  const themes = { dark: '深色', light: '浅色', system: '跟随系统' };
-  const body = `<form id="weatherForm" class="dialog-form"><label>天气城市<input name="weatherCity" maxlength="80" value="${escapeHtml(state.settings.weatherCity || '深圳')}" required></label></form><div class="settings-list">${settingToggle('autoStart', '开机自动启动', '便携 EXE 也可随 Windows 自动运行')}${settingToggle('startMinimized', '启动时隐藏', '从托盘或快捷键唤起桌面舱')}${settingToggle('closeAfterLaunch', '启动项目后隐藏', '打开项目后自动收起到托盘')}</div><div class="setting-row"><span><b>界面主题</b><small>${themes[state.settings.theme] || themes.system}</small></span><button class="text-button" data-action="cycle-theme">切换</button></div><div class="settings-grid"><button data-action="export-config">导出配置</button><button data-action="import-config">导入配置</button><button data-action="quit-app" class="danger-row">退出桌面舱</button></div>`;
-  openDialog(dialogShell('桌面舱设置', '右侧吸附、托盘常驻和本地数据设置。', body, '<button data-action="close-dialog">取消</button><button class="primary" data-action="save-settings">应用</button>'), true);
+function renderTodo() {
+  const filtered = state.todos.filter((item) => item.title.toLocaleLowerCase('zh-CN').includes(state.query));
+  const open = filtered.filter((item) => !item.completed);
+  const done = filtered.filter((item) => item.completed);
+  content.innerHTML = `<div class="page-head"><div><h1>待办</h1><p>${open.length} 项待处理</p></div><button class="primary-button" data-action="new-todo">${icon(ICONS.add)}添加任务</button></div>
+    <div class="todo-filter"><button class="active">全部 ${filtered.length}</button><div>${state.todoBatch ? `<button data-action="bulk-complete">完成所选</button><button data-action="bulk-delete">删除所选</button>` : '<span>拖动任务可调整顺序</span>'}<button data-action="toggle-todo-batch">${state.todoBatch ? '退出批量' : '批量'}</button></div></div>
+    <div class="todo-list">${open.map(todoItem).join('') || `<div class="calm-empty">${icon(ICONS.check)}<b>当前没有待办</b><span>今天的桌面很干净</span></div>`}${done.length ? `<h2 class="subheading">已完成 ${done.length}</h2>${done.map(todoItem).join('')}` : ''}</div>`;
 }
 
-async function hydrateIcons() {
-  if (!api?.isElectron) return;
-  const generation = ++iconGeneration;
-  const visibleShortcutIds = new Set([...document.querySelectorAll('[data-shortcut-icon]')].map((node) => node.dataset.shortcutIcon));
-  const visibleAppIds = new Set([...document.querySelectorAll('[data-app-icon]')].map((node) => node.dataset.appIcon));
-  const tasks = [...state.shortcuts.filter((item) => visibleShortcutIds.has(item.id) && !shortcutIconMemory.has(item.id)).map((item) => ({ item, kind: 'shortcut' })), ...state.apps.filter((item) => visibleAppIds.has(item.id) && !appIconMemory.has(item.id)).map((item) => ({ item, kind: 'app' }))];
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < tasks.length && generation === iconGeneration) {
-      const task = tasks[cursor++];
-      const value = task.kind === 'shortcut' ? await api.desktop.shortcutIcon(task.item.id).catch(() => null) : await api.apps.icon(task.item.id).catch(() => null);
-      if (generation !== iconGeneration) return;
-      const safe = typeof value === 'string' && value.startsWith('data:image/png;base64,') ? value : null;
-      const memory = task.kind === 'shortcut' ? shortcutIconMemory : appIconMemory;
-      memory.set(task.item.id, safe);
-      if (!safe) continue;
-      document.querySelectorAll(`[data-${task.kind}-icon="${task.item.id}"]`).forEach((container) => { const image = document.createElement('img'); image.src = safe; image.alt = ''; container.replaceChildren(image); container.classList.add('has-image'); });
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(12, tasks.length) }, worker));
+function fileItem(item) {
+  const extension = item.extension?.replace('.', '').toUpperCase() || 'FILE';
+  return `<article class="file-item" data-file-id="${esc(item.id)}"><button class="file-main" data-action="open-file" data-file-id="${esc(item.id)}"><span class="file-type" data-file-thumbnail="${esc(item.id)}">${esc(extension.slice(0, 4))}</span><span><b>${esc(item.name)}</b><small>${formatSize(item.size)} · ${formatDate(item.modifiedAt)}</small></span></button><button class="icon-button" data-action="file-menu" data-file-id="${esc(item.id)}" aria-label="文件操作">${icon(ICONS.more)}</button></article>`;
+}
+
+function renderFiles() {
+  const activeRoot = state.roots.find((item) => item.id === state.fileRootId) || state.roots[0];
+  const filtered = state.files.filter((item) => !state.query || item.name.toLocaleLowerCase('zh-CN').includes(state.query)).sort((left, right) => state.fileSort === 'name' ? left.name.localeCompare(right.name, 'zh-CN') : state.fileSort === 'size' ? right.size - left.size : String(right.modifiedAt).localeCompare(String(left.modifiedAt)));
+  content.innerHTML = `<div class="page-head"><div><h1>文件</h1><p>本地索引与收藏目录</p></div><button class="primary-button" data-action="add-root">${icon(ICONS.add)}收藏目录</button></div>
+    <div class="file-toolbar"><div class="root-tabs">${state.roots.map((root) => `<button class="${root.id === activeRoot?.id ? 'active' : ''}" data-action="select-root" data-root-id="${esc(root.id)}">${esc(root.name)}</button>`).join('')}</div><div class="file-tools"><button class="select-button" data-action="cycle-file-sort">${esc({ modified: '最近', name: '名称', size: '大小' }[state.fileSort])}</button><button class="icon-button" data-action="toggle-file-layout" title="切换布局">${icon(state.settings.fileLayout === 'grid' ? ICONS.list : ICONS.grid)}</button></div></div>
+    <section class="file-drop" data-file-drop="${esc(activeRoot?.id || '')}">${icon(ICONS.move)}<span><b>拖入文件到 ${esc(activeRoot?.name || '收藏目录')}</b><small>原文件保留，这里创建一份副本</small></span></section>
+    <div class="file-collection ${state.settings.fileLayout}">${filtered.map(fileItem).join('') || `<div class="calm-empty">${icon(ICONS.folder)}<b>暂无最近文件</b><span>刷新索引或收藏一个目录</span></div>`}</div>`;
+  hydrateFileThumbnails();
+}
+
+function weatherGlyph(code) { return Number(code) >= 51 ? ICONS.rain : Number(code) >= 2 ? ICONS.cloud : ICONS.sun; }
+function renderWeather() {
+  if (state.weatherError) return `<section class="feature-panel"><div class="calm-empty">${icon(ICONS.cloud)}<b>${esc(state.weatherError)}</b><button data-action="refresh-weather">重试</button></div></section>`;
+  if (!state.weather) return `<section class="feature-panel loading-line">正在获取天气…</section>`;
+  const current = state.weather.current;
+  const daily = state.weather.daily || [];
+  return `<section class="feature-panel weather-panel layout-${esc(state.settings.weatherLayout)} condition-${Number(current.weatherCode) >= 51 ? 'rain' : Number(current.weatherCode) >= 2 ? 'cloud' : 'sun'}">
+    <header class="feature-header"><div><h2>${esc(state.weather.locationName || state.weather.city)}</h2><small>${esc(WEATHER_LABELS[current.weatherCode] || '天气')}</small></div><div><button class="icon-button" data-action="locate-weather" title="使用当前位置">${icon(ICONS.move)}</button><button class="icon-button" data-action="refresh-weather">${icon(ICONS.refresh)}</button></div></header>
+    <div class="weather-now">${icon(weatherGlyph(current.weatherCode))}<strong>${Math.round(current.temperature)}°</strong><span>体感 ${Math.round(current.apparentTemperature)}°</span></div>
+    <div class="weather-facts"><span><b>${current.relativeHumidity}%</b>湿度</span><span><b>${Math.round(current.windSpeed || 0)} km/h</b>风速</span><span><b>${Math.round(current.pressure || 0)} hPa</b>气压</span><span><b>${current.precipitationProbability || 0}%</b>降水</span></div>
+    <div class="hourly-row">${(state.weather.hourly || []).map((hour) => `<span><time>${new Date(hour.time).getHours()}:00</time>${icon(weatherGlyph(hour.weatherCode))}<b>${Math.round(hour.temperature)}°</b></span>`).join('')}</div>
+    ${daily.length ? `<div class="week-list">${daily.map((day, index) => `<span><time>${index === 0 ? '今天' : new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(new Date(day.time))}</time>${icon(weatherGlyph(day.weatherCode))}<b>${Math.round(day.temperatureMin)}° / ${Math.round(day.temperatureMax)}°</b><small>${day.precipitationProbability || 0}%</small></span>`).join('')}</div>` : ''}
+  </section>`;
+}
+
+function renderMedia() {
+  const media = state.media;
+  return `<section class="feature-panel media-panel"><header class="feature-header"><div><h2>系统媒体</h2><small>${media.available ? '已连接 Windows 媒体会话' : '等待播放器'}</small></div><button class="icon-button" data-action="refresh-media">${icon(ICONS.refresh)}</button></header>
+    <div class="media-art"><span></span></div><div class="media-title"><b>${esc(media.title || '打开任意音乐或视频应用')}</b><span>${esc(media.artist || '支持系统媒体快捷键')}</span></div>
+    ${media.duration ? `<div class="media-progress"><span style="width:${Math.min(100, Math.round((media.position || 0) / media.duration * 100))}%"></span></div>` : ''}
+    <div class="media-controls"><button data-media="previous" aria-label="上一首">${icon(ICONS.previous)}</button><button data-media="playPause" class="play" aria-label="播放或暂停">${icon(media.status === 'Playing' ? ICONS.pause : ICONS.play)}</button><button data-media="next" aria-label="下一首">${icon(ICONS.next)}</button><button data-media="volumeDown" aria-label="降低音量">${icon(ICONS.volume)}−</button><button data-media="volumeUp" aria-label="提高音量">${icon(ICONS.volume)}＋</button></div>
+  </section>`;
+}
+
+function renderWidgets() {
+  content.innerHTML = `<div class="page-head"><div><h1>组件</h1><p>桌面上的即时信息</p></div></div>${state.settings.showWeather ? renderWeather() : ''}${state.settings.showMedia ? renderMedia() : ''}${!state.settings.showWeather && !state.settings.showMedia ? `<div class="calm-empty">${icon(ICONS.settings)}<b>组件已关闭</b><span>可在设置中重新开启</span></div>` : ''}`;
+}
+
+function toggleRow(key, title, detail) {
+  return `<div class="setting-row"><span><b>${esc(title)}</b><small>${esc(detail)}</small></span><button class="switch ${state.settings[key] ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings[key])}" data-action="toggle-setting" data-setting="${esc(key)}"><i></i></button></div>`;
+}
+
+function renderSettings() {
+  content.innerHTML = `<div class="page-head"><div><h1>设置</h1><p>按使用场景重新分组</p></div></div>
+    <section class="settings-section"><h2>常规</h2>${toggleRow('autoStart', '开机自动启动', '便携 EXE 随 Windows 启动')}${toggleRow('autoStowShortcuts', '自动收纳桌面快捷方式', '仅移动当前用户桌面的快捷方式')}</section>
+    <section class="settings-section"><h2>外观</h2><div class="setting-row"><span><b>主题</b><small>跟随系统、浅色或深色</small></span><button class="select-button" data-action="cycle-theme">${esc({ dark: '深色', light: '浅色', system: '跟随系统' }[state.settings.theme] || '跟随系统')}</button></div></section>
+    <section class="settings-section"><h2>文件格子</h2><div class="setting-row"><span><b>默认布局</b><small>图标视图或列表视图</small></span><button class="select-button" data-action="toggle-file-layout">${state.settings.fileLayout === 'grid' ? '图标' : '列表'}</button></div>${toggleRow('showFiles', '启用文件模块', '显示本地收藏目录与最近文件')}</section>
+    <section class="settings-section"><h2>功能格子</h2>${toggleRow('showTodo', '待办', '任务、截止时间、提醒、重复与附件')}${toggleRow('showWeather', '天气', '逐小时与 7 天天气')}<div class="setting-row"><span><b>天气城市</b><small>手动输入城市，或在天气页使用定位</small></span><form id="weatherCityForm" class="inline-setting"><input name="city" value="${esc(state.settings.weatherCity)}" maxlength="80"><button type="button" data-action="save-weather-city">保存</button></form></div><div class="setting-row"><span><b>天气布局</b><small>标准、紧凑、逐小时或周预报</small></span><button class="select-button" data-action="cycle-weather-layout">${esc({ standard: '标准', compact: '紧凑', hourly: '逐小时', week: '周预报' }[state.settings.weatherLayout])}</button></div>${toggleRow('showMedia', '媒体控制', '控制当前 Windows 媒体会话')}</section>
+    <section class="settings-actions"><button data-action="export-settings">导出配置</button><button data-action="import-settings">导入配置</button><button class="danger" data-action="quit">退出桌面舱</button></section>`;
+}
+
+function render() {
+  nav?.querySelectorAll('[data-nav]').forEach((button) => button.classList.toggle('active', button.dataset.nav === state.page));
+  search.placeholder = ({ desktop: '搜索快捷方式', todo: '搜索任务', files: '搜索文件', widgets: '搜索组件', settings: '搜索设置' })[state.page];
+  if (state.loading) { content.innerHTML = `<div class="loading-page"><i></i><b>正在整理你的桌面</b></div>`; return; }
+  ({ desktop: renderDesktop, todo: renderTodo, files: renderFiles, widgets: renderWidgets, settings: renderSettings }[state.page] || renderDesktop)();
+}
+
+async function hydrateShortcutIcons() {
+  if (!api?.desktop?.shortcutIcon) return;
+  const nodes = [...document.querySelectorAll('[data-shortcut-icon]')];
+  await Promise.all(nodes.map(async (node) => {
+    const source = await api.desktop.shortcutIcon(node.dataset.shortcutIcon).catch(() => null);
+    if (source && node.isConnected) node.innerHTML = `<img alt="" src="${source}">`;
+  }));
+}
+
+async function hydrateFileThumbnails() {
+  if (!api?.files?.thumbnail) return;
+  const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']);
+  const nodes = [...document.querySelectorAll('[data-file-thumbnail]')].filter((node) => imageExtensions.has(state.files.find((item) => item.id === node.dataset.fileThumbnail)?.extension));
+  await Promise.all(nodes.map(async (node) => {
+    const source = await api.files.thumbnail(node.dataset.fileThumbnail).catch(() => null);
+    if (source && node.isConnected) { node.classList.add('has-thumbnail'); node.innerHTML = `<img alt="" src="${source}">`; }
+  }));
+}
+
+async function loadBoard() {
+  if (api?.board) state.board = await api.board.get();
+  else state.board = { categories: [{ id: 'demo', name: '工作', color: '#1677ff', count: 2 }], shortcuts: [{ id: 'shortcut_11111111111111111111', name: '浏览器', location: 'stowed', categoryId: 'demo' }, { id: 'shortcut_22222222222222222222', name: '设计工具', location: 'stowed', categoryId: 'demo' }, { id: 'shortcut_33333333333333333333', name: '新快捷方式', location: 'stowed', categoryId: null }] };
+}
+
+async function loadFiles() {
+  if (!api?.files) { state.roots = [{ id: 'desktop', name: '桌面' }, { id: 'documents', name: '文档' }]; state.files = []; return; }
+  [state.roots, state.files] = await Promise.all([api.files.roots(), api.files.list(80)]);
+  state.fileRootId ||= state.roots[0]?.id || null;
 }
 
 async function loadWeather(force = false) {
   if (!api?.weather) return;
-  if (state.weatherLoading && !force) return;
-  state.weatherLoading = true;
-  state.weatherError = null;
-  render();
-  try { state.weather = await api.weather.get(state.settings.weatherCity, force); }
-  catch (error) { state.weather = null; state.weatherError = error?.message || '天气读取失败'; }
-  state.weatherLoading = false;
-  render();
+  try { state.weatherError = null; state.weather = await api.weather.get(state.settings.weatherCity, force); }
+  catch (error) { state.weatherError = error.message || '天气读取失败'; }
+  if (state.page === 'widgets') render();
 }
 
-async function loadData({ rescan = false } = {}) {
-  if (!api?.isElectron) { state.loading = false; render(); return; }
-  state.loading = true;
-  state.error = null;
-  render();
+async function loadMedia() {
+  if (!api?.media?.status) return;
+  state.media = await api.media.status().catch(() => ({ available: false }));
+  if (state.page === 'widgets') render();
+}
+
+async function loadAll() {
+  state.loading = true; render();
   try {
-    if (rescan) await Promise.all([api.apps.rescan(), api.files.rescan()]);
-    const [apps, categories, files, roots, organizer, restorePoints, settings, index] = await Promise.all([api.apps.list({ size: 500 }), api.categories.list(), api.files.list(40), api.files.roots(), api.desktop.scan(), api.desktop.restorePoints(), api.settings.get(), api.index.getStatus()]);
-    state.apps = apps; state.categories = categories; state.files = files; state.roots = roots; state.shortcuts = organizer.shortcutItems || [];
-    state.organizer = { ...state.organizer, ...organizer, restorePoints };
-    const weatherCityChanged = state.settings.weatherCity !== settings.weatherCity;
-    state.settings = { ...state.settings, ...settings }; state.index = index; state.loading = false;
-    applyTheme(state.settings.theme); render();
-    if ((!state.weather || weatherCityChanged) && !state.weatherLoading) void loadWeather(false);
-  } catch (error) { state.loading = false; state.error = error?.message || '读取失败，请检查桌面访问权限'; render(); }
+    const settingsPromise = api?.settings?.get?.() || Promise.resolve(state.settings);
+    const [settings] = await Promise.all([settingsPromise, loadBoard(), loadFiles(), api?.todo?.list?.().then((items) => { state.todos = items; })]);
+    state.settings = { ...state.settings, ...settings };
+    document.documentElement.dataset.theme = state.settings.theme;
+    status.textContent = '桌面层已就绪';
+  } catch (error) { status.textContent = '读取失败'; showToast(error.message || '本地数据读取失败', 'error'); }
+  state.loading = false; render();
+  void loadWeather(); void loadMedia();
 }
 
-async function afterLaunch(result, successMessage) {
-  if (!result?.success) return showToast(result?.error || '项目无法打开，请刷新后重试', 'error');
-  showToast(successMessage);
-  if (state.settings.closeAfterLaunch) await api?.window?.hide?.();
+function categoryDialog(category = null) {
+  const colors = COLORS.map((color) => `<label><input type="radio" name="color" value="${color}" ${(category?.color || COLORS[0]) === color ? 'checked' : ''}><span style="--swatch:${color}"></span></label>`).join('');
+  openDialog(category ? '编辑分类' : '新建分类', '分类只用于你收纳的桌面快捷方式。', `<form id="categoryForm" class="dialog-form"><label>名称<input name="name" maxlength="20" required value="${esc(category?.name || '')}" placeholder="例如：工作"></label><fieldset><legend>识别色</legend><div class="color-options">${colors}</div></fieldset></form>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-category" data-category-id="${esc(category?.id || '')}">保存</button>`);
 }
 
-async function runBusy(operation, successMessage, failureMessage) {
-  if (state.busy) return;
-  state.busy = true;
-  const result = await operation().catch(() => null);
-  state.busy = false;
-  await loadData();
-  const failed = result?.success === false || !result;
-  showToast(failed ? (result?.error || failureMessage) : successMessage(result), failed ? 'error' : 'success');
+function moveShortcutDialog(shortcutId) {
+  const item = state.board.shortcuts.find((entry) => entry.id === shortcutId);
+  if (!item) return;
+  const options = [{ id: '', name: '桌面仓', color: '#1677ff' }, ...state.board.categories];
+  openDialog('移动到分类', `选择“${item.name}”的新位置。`, `<div class="move-list">${options.map((entry) => `<button data-action="assign-shortcut" data-shortcut-id="${esc(shortcutId)}" data-category-id="${esc(entry.id)}"><i style="--swatch:${esc(entry.color)}"></i><span>${esc(entry.name)}</span>${(item.categoryId || '') === entry.id ? icon(ICONS.check) : ''}</button>`).join('')}</div>`, `<button data-action="close-dialog">取消</button>`);
+}
+
+function todoDialog(item = null) {
+  const colorOptions = TODO_COLORS.map((color) => `<label><input type="radio" name="color" value="${color}" ${(item?.color || 'blue') === color ? 'checked' : ''}><span class="todo-color ${color}"></span></label>`).join('');
+  openDialog(item ? '编辑任务' : '添加任务', '把临时事项留在桌面，不必再发给自己。', `<form id="todoForm" class="dialog-form"><label>任务标题<input name="title" maxlength="120" required value="${esc(item?.title || '')}" placeholder="要处理什么？"></label><label>备注<textarea name="notes" maxlength="4000" rows="3" placeholder="补充细节">${esc(item?.notes || '')}</textarea></label><div class="form-pair"><label>截止时间<input type="datetime-local" name="dueAt" value="${item?.dueAt ? esc(item.dueAt.slice(0, 16)) : ''}"></label><label>提醒时间<input type="datetime-local" name="reminderAt" value="${item?.reminderAt ? esc(item.reminderAt.slice(0, 16)) : ''}"></label></div><label>重复<select name="recurrence"><option value="none">不重复</option><option value="daily" ${item?.recurrence === 'daily' ? 'selected' : ''}>每天</option><option value="weekly" ${item?.recurrence === 'weekly' ? 'selected' : ''}>每周</option><option value="monthly" ${item?.recurrence === 'monthly' ? 'selected' : ''}>每月</option></select></label><fieldset><legend>颜色标记</legend><div class="color-options">${colorOptions}</div></fieldset><input type="hidden" name="attachments" value="${esc(JSON.stringify(item?.attachments || []))}"><button type="button" class="attach-button" data-action="pick-attachments">${icon(ICONS.attach)} 选择附件 <span>${item?.attachments?.length || 0}</span></button></form>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-todo" data-todo-id="${esc(item?.id || '')}">保存</button>`);
 }
 
 async function saveSetting(key, value) {
-  const previous = state.settings[key]; state.settings[key] = value; applyTheme(state.settings.theme); render();
-  if (!api?.settings) return { success: true };
-  const result = await api.settings.set(key, value).catch(() => ({ success: false }));
-  if (!result.success) { state.settings[key] = previous; applyTheme(state.settings.theme); render(); showToast(result.error || '设置保存失败', 'error'); }
-  return result;
+  const previous = state.settings[key]; state.settings[key] = value;
+  const result = await api?.settings?.set?.(key, value);
+  if (!resultOk(result)) { state.settings[key] = previous; showToast(result.error || '设置保存失败', 'error'); }
+  document.documentElement.dataset.theme = state.settings.theme;
+  render();
 }
 
-function renderSearchResults(results) {
-  state.searchResults = results; state.searchIndex = Math.min(state.searchIndex, Math.max(0, results.length - 1)); dockSearchResults.hidden = false;
-  dockSearchResults.innerHTML = results.length ? results.map((result, index) => `<button class="search-result ${index === state.searchIndex ? 'selected' : ''}" data-search-index="${index}">${result.kind === 'shortcut' ? itemIcon(result.item, 'shortcut') : result.kind === 'app' ? itemIcon(result.item, 'app') : `<span class="item-icon">${fileMark(result.item)}</span>`}<span><b>${escapeHtml(result.item.name)}</b><small>${escapeHtml(result.detail)}</small></span><em>打开</em></button>`).join('') : '<div class="search-empty">没有匹配项目</div>';
+async function assignShortcut(shortcutId, categoryId) {
+  const result = await api?.board?.assign?.(shortcutId, categoryId || null);
+  if (!resultOk(result)) return showToast(result.error || '归类失败', 'error');
+  const item = state.board.shortcuts.find((entry) => entry.id === shortcutId); if (item) item.categoryId = categoryId || null;
+  await loadBoard(); render(); showToast(categoryId ? '已移动到分类' : '已移回桌面仓');
 }
 
-async function search(query) {
-  const normalized = query.trim().toLocaleLowerCase('zh-CN');
-  if (!normalized) { dockSearchResults.hidden = true; state.searchResults = []; return; }
-  const local = [...state.shortcuts.filter((item) => item.name.toLocaleLowerCase('zh-CN').includes(normalized)).map((item) => ({ kind: 'shortcut', item, detail: '桌面快捷方式' })), ...state.apps.filter((item) => item.name.toLocaleLowerCase('zh-CN').includes(normalized)).map((item) => ({ kind: 'app', item, detail: `${item.category || '其他'}应用` }))];
-  let fileResults = state.files.filter((item) => item.name.toLocaleLowerCase('zh-CN').includes(normalized));
-  if (api?.files?.search) fileResults = await api.files.search(query, 8).catch(() => fileResults);
-  renderSearchResults([...local, ...fileResults.map((item) => ({ kind: 'file', item, detail: fileType(item) }))].slice(0, 14));
+async function droppedPaths(event) {
+  const files = [...(event.dataTransfer?.files || [])];
+  return files.map((file) => { try { return api?.files?.pathForFile?.(file) || file.path || ''; } catch { return ''; } }).filter(Boolean);
 }
 
-async function openSearchResult(index) {
-  const result = state.searchResults[index]; if (!result) return; dockSearchResults.hidden = true; dockSearch.value = '';
-  if (!api?.isElectron) return showToast(`网页预览：${result.item.name}`);
-  if (result.kind === 'shortcut') await afterLaunch(await api.desktop.launchShortcut(result.item.id), `已打开 ${result.item.name}`);
-  else if (result.kind === 'app') await afterLaunch(await api.apps.launch(result.item.id), `已启动 ${result.item.name}`);
-  else await afterLaunch(await api.files.open(result.item.id), `已打开 ${result.item.name}`);
-}
-
-async function saveCategory(categoryId) {
-  const form = dialog.querySelector('#categoryForm'); if (!form?.reportValidity()) return;
-  const data = new FormData(form); const payload = { name: data.get('name'), icon: data.get('icon'), color: data.get('color') };
-  const result = categoryId ? await api?.categories?.update?.({ id: categoryId, ...payload }) : await api?.categories?.create?.(payload);
-  if (api?.isElectron && !result?.success) return showToast(result?.error || '分类保存失败', 'error');
-  closeDialog(); await loadData(); showToast(categoryId ? '分类已更新' : '分类已创建');
-}
-
-async function saveAssignment(categoryId) {
-  const category = state.categories.find((item) => item.id === categoryId); const fallback = state.categories.find((item) => item.id === 'other');
-  if (!category || !fallback) return;
-  const selected = new Set([...dialog.querySelectorAll('[data-assign-app]:checked')].map((item) => item.dataset.assignApp)); const operations = [];
-  for (const item of state.apps) {
-    if (selected.has(item.id) && item.category !== category.name) operations.push(api.apps.setCategory(item.id, category.id));
-    if (!selected.has(item.id) && item.category === category.name) operations.push(api.apps.setCategory(item.id, fallback.id));
-  }
-  const results = await Promise.all(operations);
-  if (results.some((result) => !result?.success)) return showToast('部分应用分类保存失败，请重试', 'error');
-  closeDialog(); await loadData(); showToast(`“${category.name}”分类已更新`);
-}
-
-async function handleAction(action, element) {
-  const categoryId = element?.dataset.categoryId;
-  if (action === 'hide-dock') return api?.window?.hide?.();
-  if (action === 'refresh-all') { await loadData({ rescan: true }); return showToast('桌面数据已刷新'); }
-  if (action === 'refresh-weather') return loadWeather(true);
-  if (action === 'refresh-files') return runBusy(() => api.files.rescan(), (result) => `文件索引已刷新：${result.total} 个`, '文件索引刷新失败');
-  if (action === 'new-category') return openCategoryEditor();
-  if (action === 'edit-category') { closeDialog(); return openCategoryEditor(categoryId); }
-  if (action === 'category-menu') return openCategoryMenu(categoryId);
-  if (action === 'assign-category') { closeDialog(); return openAssignment(categoryId); }
-  if (action === 'save-category') return saveCategory(categoryId || null);
-  if (action === 'save-assignment') return saveAssignment(categoryId);
-  if (action === 'delete-category') {
-    const category = state.categories.find((item) => item.id === categoryId); if (!category) return;
-    return openDialog(dialogShell('删除分类', `“${category.name}”中的应用将移回“其他”，应用本身不会被删除。`, '', `<button data-action="close-dialog">取消</button><button class="primary danger-button" data-action="confirm-delete-category" data-category-id="${escapeHtml(categoryId)}">确认删除</button>`));
-  }
-  if (action === 'confirm-delete-category') { const result = await api?.categories?.delete?.(categoryId); if (api?.isElectron && !result?.success) return showToast(result?.error || '分类删除失败', 'error'); closeDialog(); await loadData(); return showToast('分类已删除'); }
-  if (action === 'desktop-tools') return openDesktopTools();
-  if (action === 'stow-shortcuts') { closeDialog(); return runBusy(() => api.desktop.stowShortcuts(), (result) => `已收纳 ${result.stowed} 个快捷方式`, '快捷方式收纳失败'); }
-  if (action === 'restore-shortcuts') { closeDialog(); return runBusy(() => api.desktop.restoreShortcuts(), (result) => `已恢复 ${result.restored} 个快捷方式`, '快捷方式恢复失败'); }
-  if (action === 'organize-files') { closeDialog(); return runBusy(() => api.desktop.organize(), (result) => `已整理 ${result.organized} 个文件`, '文件整理失败'); }
-  if (action === 'restore-files') { closeDialog(); return runBusy(() => api.desktop.restoreLast(), (result) => `已恢复 ${result.restored} 个文件`, '没有可用的还原点'); }
-  if (action === 'add-root') { const result = await api?.files?.addRoot?.(); if (result?.success) { await loadData(); showToast('文件夹组件已添加'); } return; }
-  if (action === 'open-settings') return openSettings();
-  if (action === 'save-settings') {
-    const form = dialog.querySelector('#weatherForm'); if (!form?.reportValidity()) return;
-    const city = new FormData(form).get('weatherCity').trim(); const changed = city !== state.settings.weatherCity; const result = await saveSetting('weatherCity', city);
-    if (!result?.success) return; closeDialog(); if (changed) await loadWeather(true); return showToast('设置已应用');
-  }
-  if (action === 'cycle-theme') { const values = ['dark', 'light', 'system']; await saveSetting('theme', values[(values.indexOf(state.settings.theme) + 1) % values.length]); return openSettings(); }
-  if (action === 'export-config') { const result = await api?.settings?.export?.(); if (result?.success) showToast('配置已导出'); return; }
-  if (action === 'import-config') { const result = await api?.settings?.import?.(); if (result?.success) { closeDialog(); await loadData(); showToast('配置已导入'); } return; }
-  if (action === 'quit-app') return openDialog(dialogShell('退出桌面舱', '退出后组件栏和全局快捷键会停止工作。', '', '<button data-action="close-dialog">取消</button><button class="primary danger-button" data-action="confirm-quit">确认退出</button>'));
-  if (action === 'confirm-quit') return api?.window?.quit?.();
+async function handleAction(button) {
+  const action = button.dataset.action;
+  if (action === 'hide') return api?.window?.hide?.();
+  if (action === 'refresh') return loadAll();
   if (action === 'close-dialog') return closeDialog();
+  if (action === 'new-category') return categoryDialog();
+  if (action === 'edit-category') return categoryDialog(state.board.categories.find((item) => item.id === button.dataset.categoryId));
+  if (action === 'save-category') {
+    const form = dialog.querySelector('#categoryForm'); if (!form?.reportValidity()) return;
+    const data = new FormData(form); const payload = { id: button.dataset.categoryId, name: data.get('name'), color: data.get('color') };
+    const result = payload.id ? await api?.board?.updateCategory?.(payload) : await api?.board?.createCategory?.(payload);
+    if (!resultOk(result)) return showToast(result.error || '分类保存失败', 'error');
+    closeDialog(); await loadBoard(); render(); return showToast('分类已保存');
+  }
+  if (action === 'delete-category') {
+    const category = state.board.categories.find((item) => item.id === button.dataset.categoryId); if (!category) return;
+    return openDialog('删除分类', `“${category.name}”内的快捷方式会移回桌面仓，快捷方式本身不会删除。`, '', `<button data-action="close-dialog">取消</button><button class="primary danger" data-action="confirm-delete-category" data-category-id="${esc(category.id)}">删除分类</button>`);
+  }
+  if (action === 'confirm-delete-category') {
+    const result = await api?.board?.deleteCategory?.(button.dataset.categoryId); if (!resultOk(result)) return showToast(result.error, 'error');
+    closeDialog(); await loadBoard(); render(); return showToast('分类已删除');
+  }
+  if (action === 'move-shortcut') return moveShortcutDialog(button.dataset.shortcutId);
+  if (action === 'assign-shortcut') { closeDialog(); return assignShortcut(button.dataset.shortcutId, button.dataset.categoryId || null); }
+  if (action === 'import-shortcuts') { const result = await api?.board?.pick?.(null); if (result?.canceled) return; if (!resultOk(result)) return showToast(result?.error || '导入失败', 'error'); await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式`); }
+  if (action === 'new-todo') return todoDialog();
+  if (action === 'toggle-todo-batch') { state.todoBatch = !state.todoBatch; state.todoSelected.clear(); return render(); }
+  if (action === 'select-todo') { state.todoSelected.has(button.dataset.todoId) ? state.todoSelected.delete(button.dataset.todoId) : state.todoSelected.add(button.dataset.todoId); return render(); }
+  if (action === 'bulk-complete') { await Promise.all([...state.todoSelected].map((id) => { const item = state.todos.find((entry) => entry.id === id); return item ? api.todo.update({ id, title: item.title, completed: true }) : null; })); state.todos = await api.todo.list(); state.todoSelected.clear(); render(); return showToast('所选任务已完成'); }
+  if (action === 'bulk-delete') { await Promise.all([...state.todoSelected].map((id) => api.todo.delete(id))); state.todos = await api.todo.list(); state.todoSelected.clear(); render(); return showToast('所选任务已删除'); }
+  if (action === 'edit-todo') return todoDialog(state.todos.find((item) => item.id === button.dataset.todoId));
+  if (action === 'pick-attachments') {
+    const paths = await api?.todo?.pickAttachments?.() || []; const input = dialog.querySelector('[name="attachments"]');
+    if (input) input.value = JSON.stringify(paths); button.querySelector('span').textContent = paths.length; return;
+  }
+  if (action === 'save-todo') {
+    const form = dialog.querySelector('#todoForm'); if (!form?.reportValidity()) return;
+    const data = new FormData(form); const payload = { id: button.dataset.todoId, title: data.get('title'), notes: data.get('notes'), dueAt: data.get('dueAt'), reminderAt: data.get('reminderAt'), recurrence: data.get('recurrence'), color: data.get('color'), attachments: JSON.parse(data.get('attachments') || '[]') };
+    const result = payload.id ? await api?.todo?.update?.(payload) : await api?.todo?.create?.(payload); if (!resultOk(result)) return showToast(result.error, 'error');
+    closeDialog(); state.todos = await api.todo.list(); render(); return showToast('任务已保存');
+  }
+  if (action === 'toggle-todo') { const item = state.todos.find((entry) => entry.id === button.dataset.todoId); if (!item) return; await api?.todo?.update?.({ id: item.id, title: item.title, completed: !item.completed }); state.todos = await api.todo.list(); return render(); }
+  if (action === 'delete-todo') { await api?.todo?.delete?.(button.dataset.todoId); state.todos = await api.todo.list(); render(); return showToast('任务已删除'); }
+  if (action === 'select-root') { state.fileRootId = button.dataset.rootId; return render(); }
+  if (action === 'add-root') { const result = await api?.files?.addRoot?.(); if (resultOk(result)) { await loadFiles(); render(); } return; }
+  if (action === 'open-file') return api?.files?.open?.(button.dataset.fileId);
+  if (action === 'file-menu') {
+    const item = state.files.find((entry) => entry.id === button.dataset.fileId); if (!item) return;
+    return openDialog(item.name, '保留 Windows 原生文件操作习惯。', `<div class="action-list"><button data-action="open-file" data-file-id="${esc(item.id)}">${icon(ICONS.open)}打开</button><button data-action="reveal-file" data-file-id="${esc(item.id)}">${icon(ICONS.reveal)}在资源管理器中显示</button><button data-action="rename-file" data-file-id="${esc(item.id)}">${icon(ICONS.edit)}重命名</button><button class="danger" data-action="delete-file" data-file-id="${esc(item.id)}">${icon(ICONS.trash)}移到回收站</button></div>`, `<button data-action="close-dialog">关闭</button>`);
+  }
+  if (action === 'reveal-file') return api?.files?.reveal?.(button.dataset.fileId);
+  if (action === 'rename-file') { const item = state.files.find((entry) => entry.id === button.dataset.fileId); return openDialog('重命名文件', '', `<form id="renameForm" class="dialog-form"><label>新文件名<input name="name" value="${esc(item?.name || '')}" required></label></form>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-file-name" data-file-id="${esc(button.dataset.fileId)}">保存</button>`); }
+  if (action === 'save-file-name') { const form = dialog.querySelector('#renameForm'); if (!form.reportValidity()) return; const result = await api?.files?.rename?.(button.dataset.fileId, new FormData(form).get('name')); if (!resultOk(result)) return showToast(result.error, 'error'); closeDialog(); await loadFiles(); render(); return showToast('文件已重命名'); }
+  if (action === 'delete-file') { const result = await api?.files?.delete?.(button.dataset.fileId); if (!resultOk(result)) return showToast(result.error, 'error'); closeDialog(); await loadFiles(); render(); return showToast('文件已移到回收站'); }
+  if (action === 'toggle-file-layout') return saveSetting('fileLayout', state.settings.fileLayout === 'grid' ? 'list' : 'grid');
+  if (action === 'cycle-file-sort') { const sorts = ['modified', 'name', 'size']; state.fileSort = sorts[(sorts.indexOf(state.fileSort) + 1) % sorts.length]; return render(); }
+  if (action === 'refresh-weather') return loadWeather(true);
+  if (action === 'locate-weather') {
+    if (!navigator.geolocation) return showToast('系统未提供位置服务', 'error');
+    showToast('正在读取当前位置…');
+    return navigator.geolocation.getCurrentPosition(async (position) => { try { state.weather = await api.weather.getByCoordinates(position.coords.latitude, position.coords.longitude, true); state.weatherError = null; render(); showToast('已切换到当前位置'); } catch (error) { showToast(error.message || '定位天气失败', 'error'); } }, () => showToast('位置权限未开启，请在 Windows 设置中允许定位', 'error'), { timeout: 8000, maximumAge: 600000 });
+  }
+  if (action === 'save-weather-city') { const form = button.closest('form'); const city = new FormData(form).get('city').trim(); if (!city) return showToast('请输入城市', 'error'); await saveSetting('weatherCity', city); await loadWeather(true); return showToast('天气城市已更新'); }
+  if (action === 'cycle-weather-layout') { const layouts = ['standard', 'compact', 'hourly', 'week']; return saveSetting('weatherLayout', layouts[(layouts.indexOf(state.settings.weatherLayout) + 1) % layouts.length]); }
+  if (action === 'refresh-media') return loadMedia();
+  if (action === 'toggle-setting') return saveSetting(button.dataset.setting, !state.settings[button.dataset.setting]);
+  if (action === 'cycle-theme') { const values = ['dark', 'light', 'system']; return saveSetting('theme', values[(values.indexOf(state.settings.theme) + 1) % values.length]); }
+  if (action === 'export-settings') { const result = await api?.settings?.export?.(); if (resultOk(result)) showToast('配置已导出'); return; }
+  if (action === 'import-settings') { const result = await api?.settings?.import?.(); if (resultOk(result)) { await loadAll(); showToast('配置已导入'); } return; }
+  if (action === 'quit') return api?.window?.quit?.();
 }
 
 document.addEventListener('click', (event) => {
-  const action = event.target.closest('[data-action]'); if (action) { void handleAction(action.dataset.action, action); return; }
-  const setting = event.target.closest('[data-setting]');
-  if (setting) { const enabled = setting.getAttribute('aria-checked') !== 'true'; setting.setAttribute('aria-checked', String(enabled)); setting.classList.toggle('on', enabled); void saveSetting(setting.dataset.setting, enabled); return; }
-  const media = event.target.closest('[data-media]'); if (media) { void api?.media?.control?.(media.dataset.media).then((result) => showToast(result?.success ? '已发送系统媒体指令' : (result?.error || '媒体控制失败'), result?.success ? 'success' : 'error')); return; }
-  const shortcut = event.target.closest('[data-shortcut]'); if (shortcut) { const item = state.shortcuts.find((entry) => entry.id === shortcut.dataset.shortcut); if (item && api?.desktop) void api.desktop.launchShortcut(item.id).then((result) => afterLaunch(result, `已打开 ${item.name}`)); else if (item) showToast(`网页预览：${item.name}`); return; }
-  const appButton = event.target.closest('[data-app]'); if (appButton) { const item = state.apps.find((entry) => entry.id === appButton.dataset.app); if (item && api?.apps) void api.apps.launch(item.id).then((result) => afterLaunch(result, `已启动 ${item.name}`)); else if (item) showToast(`网页预览：${item.name}`); return; }
-  const fileButton = event.target.closest('[data-file]'); if (fileButton) { const item = state.files.find((entry) => entry.id === fileButton.dataset.file); if (item && api?.files) void api.files.open(item.id).then((result) => afterLaunch(result, `已打开 ${item.name}`)); else if (item) showToast(`网页预览：${item.name}`); return; }
-  const rootButton = event.target.closest('[data-root]'); if (rootButton) { void api?.files?.openRoot?.(rootButton.dataset.root); return; }
-  const searchResult = event.target.closest('[data-search-index]'); if (searchResult) { void openSearchResult(Number(searchResult.dataset.searchIndex)); return; }
-  if (!event.target.closest('.dock-search-results')) dockSearchResults.hidden = true;
+  const button = event.target.closest('button[data-action]'); if (button) void handleAction(button);
+  const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350));
 });
 
-dockSearch.addEventListener('input', () => { clearTimeout(searchTimer); state.searchIndex = 0; searchTimer = setTimeout(() => void search(dockSearch.value), 120); });
-dockSearch.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { dockSearch.value = ''; dockSearchResults.hidden = true; return; }
-  if (!state.searchResults.length) return;
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); state.searchIndex = (state.searchIndex + (event.key === 'ArrowDown' ? 1 : -1) + state.searchResults.length) % state.searchResults.length; renderSearchResults(state.searchResults); }
-  if (event.key === 'Enter') { event.preventDefault(); void openSearchResult(state.searchIndex); }
+nav?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-nav]'); if (!button) return;
+  if ((button.dataset.nav === 'todo' && !state.settings.showTodo) || (button.dataset.nav === 'files' && !state.settings.showFiles)) return showToast('该模块已在设置中关闭', 'error');
+  state.page = button.dataset.nav; state.query = ''; search.value = ''; render();
+  if (state.page === 'widgets') { void loadWeather(); void loadMedia(); }
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !dialogLayer.hidden) closeDialog(); if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); dockSearch.focus(); } });
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.settings.theme === 'system') applyTheme('system'); });
-setInterval(updateClock, 30_000);
-applyTheme(state.settings.theme); render(); void loadData();
-api?.onShowSearch?.(() => { dockSearch.focus(); dockSearch.select(); });
-api?.index?.onUpdated?.(() => void loadData());
-api?.files?.onUpdated?.(() => void loadData());
-api?.settings?.onChanged?.((settings) => { state.settings = { ...state.settings, ...settings }; applyTheme(state.settings.theme); render(); });
+
+search?.addEventListener('input', () => { state.query = search.value.trim().toLocaleLowerCase('zh-CN'); render(); });
+document.addEventListener('dblclick', (event) => { const tile = event.target.closest('[data-shortcut]'); if (tile) void api?.desktop?.launchShortcut?.(tile.dataset.shortcut); });
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !dialogLayer.hidden) closeDialog();
+  if (event.key === 'Enter' && event.target.matches('[data-shortcut]')) void api?.desktop?.launchShortcut?.(event.target.dataset.shortcut);
+});
+
+document.addEventListener('dragstart', (event) => {
+  const shortcut = event.target.closest('[data-shortcut]');
+  const todo = event.target.closest('[data-todo-id]');
+  if (shortcut) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-shortcut', shortcut.dataset.shortcut); shortcut.classList.add('dragging'); }
+  if (todo) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-todo', todo.dataset.todoId); todo.classList.add('dragging'); }
+});
+document.addEventListener('dragend', () => document.querySelectorAll('.dragging,.drop-active').forEach((node) => node.classList.remove('dragging', 'drop-active')));
+document.addEventListener('dragover', (event) => {
+  const target = event.target.closest('[data-drop-category],[data-file-drop],[data-todo-id]'); if (!target) return;
+  event.preventDefault(); event.dataTransfer.dropEffect = event.dataTransfer.types.includes('Files') ? 'copy' : 'move'; target.classList.add('drop-active');
+});
+document.addEventListener('dragleave', (event) => event.target.closest('.drop-active')?.classList.remove('drop-active'));
+document.addEventListener('drop', async (event) => {
+  const category = event.target.closest('[data-drop-category]');
+  const fileDrop = event.target.closest('[data-file-drop]');
+  const todoTarget = event.target.closest('[data-todo-id]');
+  if (!category && !fileDrop && !todoTarget) return;
+  event.preventDefault(); document.querySelectorAll('.drop-active').forEach((node) => node.classList.remove('drop-active'));
+  if (category) {
+    const shortcutId = event.dataTransfer.getData('application/x-desktopdock-shortcut');
+    if (shortcutId) return assignShortcut(shortcutId, category.dataset.dropCategory || null);
+    const paths = await droppedPaths(event); if (!paths.length) return showToast('没有读取到可导入的快捷方式', 'error');
+    const result = await api?.board?.import?.(paths, category.dataset.dropCategory || null); if (!resultOk(result)) return showToast(result.error || '导入失败', 'error');
+    await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式${result.skipped?.length ? `，跳过 ${result.skipped.length} 个` : ''}`);
+  }
+  if (fileDrop) { const paths = await droppedPaths(event); const result = await api?.files?.import?.(fileDrop.dataset.fileDrop, paths); if (!resultOk(result)) return showToast(result.error, 'error'); await loadFiles(); render(); return showToast(`已复制 ${result.imported || 0} 个文件`); }
+  if (todoTarget) {
+    const sourceId = event.dataTransfer.getData('application/x-desktopdock-todo'); if (!sourceId || sourceId === todoTarget.dataset.todoId) return;
+    const ids = state.todos.map((item) => item.id); const sourceIndex = ids.indexOf(sourceId); const targetIndex = ids.indexOf(todoTarget.dataset.todoId); ids.splice(targetIndex, 0, ids.splice(sourceIndex, 1)[0]); await api?.todo?.reorder?.(ids); state.todos = await api.todo.list(); render();
+  }
+});
+
+api?.onShowSearch?.(() => { search.focus(); search.select(); });
+api?.settings?.onChanged?.((settings) => { state.settings = { ...state.settings, ...settings }; render(); });
+updateClock(); setInterval(updateClock, 30_000); void loadAll();

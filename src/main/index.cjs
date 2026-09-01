@@ -1,14 +1,17 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } = require('electron');
+const { spawn } = require('node:child_process');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, shell, Tray } = require('electron');
 const { createAppIndex } = require('./services/app-index.cjs');
 const { createIconCache } = require('./services/icon-cache.cjs');
 const { createFileIndex } = require('./services/file-index.cjs');
 const { createDesktopOrganizer } = require('./services/desktop-organizer.cjs');
 const { createSettingsStore } = require('./services/settings-store.cjs');
 const { createWeatherService } = require('./services/weather-service.cjs');
-const { controlMedia } = require('./services/media-control.cjs');
+const { controlMedia, mediaStatus } = require('./services/media-control.cjs');
+const { createShortcutBoard } = require('./services/shortcut-board.cjs');
+const { createTodoService } = require('./services/todo-service.cjs');
 
 if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
   app.disableHardwareAcceleration();
@@ -27,6 +30,9 @@ let fileIndex = null;
 let desktopOrganizer = null;
 let settingsStore = null;
 let weatherService = null;
+let shortcutBoard = null;
+let todoService = null;
+let reminderTimer = null;
 const shortcutRegistration = {
   search: { requested: 'Alt+Space', active: null },
   toggleWindow: { requested: 'Alt+D', active: null },
@@ -262,78 +268,61 @@ async function runSidebarSmokeTest(window) {
         }
         return true;
       };
-      const loaded = await waitUntil(() => document.querySelector('#dockStatus')?.textContent.includes('已吸附'));
+      const loaded = await waitUntil(() => document.querySelector('#dockStatus')?.textContent.includes('已就绪'));
       const root = document.querySelector('.dock-shell');
-      const apps = await window.desktopDock.apps.list({ size: 500 });
-      const index = await window.desktopDock.index.getStatus();
-      const desktop = await window.desktopDock.desktop.scan();
+      const board = await window.desktopDock.board.get();
       const files = await window.desktopDock.files.list(30);
       const settings = await window.desktopDock.settings.get();
-      const originalResultCount = settings.searchResultCount;
-      const mutation = await window.desktopDock.settings.set('searchResultCount', 11);
-      const persisted = (await window.desktopDock.settings.get()).searchResultCount === 11;
-      await window.desktopDock.settings.set('searchResultCount', originalResultCount);
-      const appTarget = apps[0];
-      const appIcon = appTarget ? await window.desktopDock.apps.icon(appTarget.id) : null;
-      const shortcutTarget = desktop.shortcutItems?.[0];
-      const shortcutIcon = shortcutTarget ? await window.desktopDock.desktop.shortcutIcon(shortcutTarget.id) : null;
-      const categories = await window.desktopDock.categories.list();
+      const originalLayout = settings.fileLayout;
+      const mutation = await window.desktopDock.settings.set('fileLayout', originalLayout === 'grid' ? 'list' : 'grid');
+      const persisted = (await window.desktopDock.settings.get()).fileLayout !== originalLayout;
+      await window.desktopDock.settings.set('fileLayout', originalLayout);
       const roots = await window.desktopDock.files.roots();
-      const widgetBoard = document.querySelectorAll('#dockContent .widget-column').length === 2;
-      const categoryWidgets = document.querySelectorAll('#dockContent .category-widget').length === categories.length;
-      const appsView = document.querySelectorAll('#dockContent [data-app]').length > 0;
-      const filesView = document.querySelector('#dockContent .file-widget');
-      const desktopView = document.querySelector('#dockContent .shortcut-widget');
-      document.querySelector('[data-action="open-settings"]')?.click();
-      const settingsView = document.querySelectorAll('#dockDialog [data-setting]').length >= 3;
-      document.querySelector('#dockDialog [data-action="close-dialog"]')?.click();
+      const created = await window.desktopDock.board.createCategory({ name: '冒烟分类', color: '#1677ff' });
+      const categoryPersisted = (await window.desktopDock.board.get()).categories.some((item) => item.id === created.category.id);
+      const deleted = await window.desktopDock.board.deleteCategory(created.category.id);
+      const todoCreated = await window.desktopDock.todo.create({ title: '冒烟任务', color: 'blue', recurrence: 'none' });
+      const todoUpdated = await window.desktopDock.todo.update({ id: todoCreated.todo.id, title: '冒烟任务', completed: true });
+      const todoDeleted = await window.desktopDock.todo.delete(todoCreated.todo.id);
       document.querySelector('[data-action="new-category"]')?.click();
-      const categoryEditor = Boolean(document.querySelector('#dockDialog #categoryForm'));
-      document.querySelector('#dockDialog [data-action="close-dialog"]')?.click();
-      const search = document.querySelector('#dockSearch');
-      search.value = appTarget?.name || 'test';
-      search.dispatchEvent(new Event('input', { bubbles: true }));
-      const searchReady = await waitUntil(() => document.querySelector('#dockSearchResults')?.hidden === false, 4000);
+      const categoryEditor = Boolean(document.querySelector('#categoryForm'));
+      document.querySelector('[data-action="close-dialog"]')?.click();
+      document.querySelector('[data-nav="todo"]')?.click();
+      const todoView = document.querySelector('.todo-list');
+      document.querySelector('[data-nav="files"]')?.click();
+      const filesView = document.querySelector('.file-collection');
+      document.querySelector('[data-nav="widgets"]')?.click();
+      await waitUntil(() => Boolean(document.querySelector('.weather-panel')), 4000);
+      const widgetsView = document.querySelector('.media-panel') && document.querySelector('.weather-panel');
+      document.querySelector('[data-nav="settings"]')?.click();
+      const settingsView = document.querySelectorAll('.settings-section').length === 4;
       return {
         loaded,
         bridge: window.desktopDock?.isElectron === true,
         dockWidth: Math.abs((root?.getBoundingClientRect().width || 0) - document.documentElement.clientWidth) < 1,
         noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-        appsIndexed: apps.length > 0 && index.totalApps === apps.length,
-        shortcutBridgeSafe: Array.isArray(desktop.shortcutItems) && desktop.shortcutItems.every((item) => !('fullPath' in item) && !('fileName' in item)),
+        boardBridgeSafe: Array.isArray(board.shortcuts) && board.shortcuts.every((item) => !('fullPath' in item) && !('fileName' in item)),
         filesBridge: Array.isArray(files),
         settingsPersistence: mutation.success && persisted,
-        appIcon: !appTarget || (typeof appIcon === 'string' && appIcon.startsWith('data:image/png;base64,')),
-        shortcutIcon: !shortcutTarget || (typeof shortcutIcon === 'string' && shortcutIcon.startsWith('data:image/png;base64,')),
-        appsView: Boolean(appsView),
+        categoryCrud: created.success && categoryPersisted && deleted.success,
+        todoCrud: todoCreated.success && todoUpdated.todo.completed && todoDeleted.success,
+        desktopView: Boolean(document.querySelector('[data-nav="desktop"]')),
+        todoView: Boolean(todoView),
         filesView: Boolean(filesView),
+        widgetsView: Boolean(widgetsView),
         settingsView,
-        desktopView,
-        widgetBoard,
-        categoryWidgets,
         categoryEditor,
         rootsBridge: Array.isArray(roots),
-        searchReady,
-        shortcutCountRendered: document.querySelectorAll('#dockContent [data-shortcut]').length,
       };
     })()`);
     await new Promise((resolve) => setTimeout(resolve, 220));
-    const searchScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-sidebar-search.png'), searchScreenshot.toPNG());
-    await window.webContents.executeJavaScript(`(() => {
-      const input = document.querySelector('#dockSearch');
-      input.value = '';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#dockSearchResults').hidden = true;
-    })()`);
-    await new Promise((resolve) => setTimeout(resolve, 220));
-    const desktopScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-widget-dock.png'), desktopScreenshot.toPNG());
-    await window.webContents.executeJavaScript("document.querySelector('[data-action=\"open-settings\"]')?.click()");
-    await new Promise((resolve) => setTimeout(resolve, 180));
     const settingsScreenshot = await window.webContents.capturePage();
     fs.writeFileSync(smokeArtifactPath('electron-widget-settings.png'), settingsScreenshot.toPNG());
-    const passed = Object.entries(result).every(([key, value]) => key === 'shortcutCountRendered' ? value >= 0 : Boolean(value));
+    await window.webContents.executeJavaScript("document.querySelector('[data-nav=\"desktop\"]')?.click()");
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const desktopScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-widget-dock.png'), desktopScreenshot.toPNG());
+    const passed = Object.values(result).every(Boolean);
     console.log(`DesktopDock sidebar smoke test: ${JSON.stringify(result)}`);
     if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
       fs.writeFileSync(process.env.DESKTOPDOCK_SMOKE_RESULT, JSON.stringify({ passed, result }, null, 2), 'utf8');
@@ -368,7 +357,7 @@ function createMainWindow() {
     minimizable: false,
     movable: false,
     skipTaskbar: !isSmokeTest,
-    alwaysOnTop: !isSmokeTest,
+    alwaysOnTop: false,
     backgroundColor: isSmokeTest ? '#f3f3f3' : '#00000000',
     backgroundMaterial: process.platform === 'win32' && !isSmokeTest ? 'mica' : 'none',
     webPreferences: {
@@ -401,7 +390,9 @@ function createMainWindow() {
 
   mainWindow.once('ready-to-show', () => {
     const requestedHiddenStart = process.argv.includes('--hidden');
-    if ((!settingsStore?.get().startMinimized && !requestedHiddenStart) || process.env.DESKTOPDOCK_SMOKE_TEST === '1') mainWindow?.show();
+    const reveal = () => { if ((!settingsStore?.get().startMinimized && !requestedHiddenStart) || process.env.DESKTOPDOCK_SMOKE_TEST === '1') mainWindow?.show(); };
+    if (process.platform === 'win32' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') void attachWindowToDesktop().finally(reveal);
+    else reveal();
     if (process.env.DESKTOPDOCK_SMOKE_TEST === '1' && mainWindow) void runSidebarSmokeTest(mainWindow);
   });
   mainWindow.on('close', (event) => {
@@ -413,6 +404,18 @@ function createMainWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+function attachWindowToDesktop() {
+  if (!mainWindow || process.platform !== 'win32') return Promise.resolve(false);
+  const handle = mainWindow.getNativeWindowHandle();
+  const hwnd = handle.length >= 8 ? handle.readBigUInt64LE(0).toString() : String(handle.readUInt32LE(0));
+  const command = `$code=@'\nusing System;\nusing System.Runtime.InteropServices;\npublic static class DesktopDockHost {\n public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);\n [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c,string n);\n [DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr p,IntPtr a,string c,string n);\n [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h,uint m,IntPtr w,IntPtr l,uint f,uint t,out IntPtr r);\n [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb,IntPtr p);\n [DllImport("user32.dll",SetLastError=true)] public static extern IntPtr SetParent(IntPtr child,IntPtr parent);\n}\n'@; Add-Type $code; $prog=[DesktopDockHost]::FindWindow('Progman',$null); $out=[IntPtr]::Zero; [void][DesktopDockHost]::SendMessageTimeout($prog,0x052C,[IntPtr]::Zero,[IntPtr]::Zero,0,1000,[ref]$out); $script:worker=[IntPtr]::Zero; [void][DesktopDockHost]::EnumWindows({param($top,$p) $view=[DesktopDockHost]::FindWindowEx($top,[IntPtr]::Zero,'SHELLDLL_DefView',$null); if($view -ne [IntPtr]::Zero){$script:worker=[DesktopDockHost]::FindWindowEx([IntPtr]::Zero,$top,'WorkerW',$null)}; return $true},[IntPtr]::Zero); if($script:worker -eq [IntPtr]::Zero){$script:worker=$prog}; $result=[DesktopDockHost]::SetParent([IntPtr]${hwnd},$script:worker); if($result -eq [IntPtr]::Zero -and [Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 0){exit 1}`;
+  return new Promise((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, stdio: 'ignore' });
+    child.once('error', () => resolve(false));
+    child.once('exit', (code) => resolve(code === 0));
+  });
+}
+
 function currentWindow(event) {
   return BrowserWindow.fromWebContents(event.sender);
 }
@@ -422,6 +425,7 @@ function positionDockWindow() {
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const [width, height] = mainWindow.getSize();
   mainWindow.setBounds({ x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height }, true);
+  if (process.platform === 'win32' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') void attachWindowToDesktop();
 }
 
 async function createTray() {
@@ -505,6 +509,14 @@ function registerIpc() {
     return result;
   });
   ipcMain.handle('dd:file:open', (_event, payload = {}) => fileIndex.open(payload.fileId, (target) => shell.openPath(target)));
+  ipcMain.handle('dd:file:thumbnail', async (_event, payload = {}) => {
+    const item = fileIndex.resolveFile(payload.fileId);
+    if (!item || !['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'].includes(path.extname(item.fullPath).toLowerCase())) return null;
+    try {
+      const image = await nativeImage.createThumbnailFromPath(item.fullPath, { width: 128, height: 128 });
+      return image?.isEmpty() ? null : image.toDataURL();
+    } catch { return null; }
+  });
   ipcMain.handle('dd:file:reveal', (_event, payload = {}) => {
     const item = fileIndex.resolveFile(payload.fileId);
     if (!item) return { success: false, error: '文件已不在索引中' };
@@ -526,6 +538,43 @@ function registerIpc() {
     return shell.openPath(root.path).then((error) => ({ success: !error, error: error || undefined }));
   });
   ipcMain.handle('dd:file:status', () => fileIndex.status());
+  ipcMain.handle('dd:file:rename', async (_event, payload = {}) => {
+    const item = fileIndex.resolveFile(payload.fileId);
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (!item || !name || name.length > 240 || name !== path.basename(name) || /[<>:"/\\|?*\u0000]/u.test(name)) return { success: false, error: '文件名无效' };
+    const destination = path.join(path.dirname(item.fullPath), name);
+    try { await fs.promises.rename(item.fullPath, destination); await fileIndex.rescan(); return { success: true }; }
+    catch (error) { return { success: false, error: error.code === 'EEXIST' ? '同名文件已存在' : error.message }; }
+  });
+  ipcMain.handle('dd:file:delete', async (_event, payload = {}) => {
+    const item = fileIndex.resolveFile(payload.fileId);
+    if (!item) return { success: false, error: '文件已不在索引中' };
+    try { await shell.trashItem(item.fullPath); await fileIndex.rescan(); return { success: true }; }
+    catch (error) { return { success: false, error: error.message }; }
+  });
+  ipcMain.handle('dd:file:import', async (_event, payload = {}) => {
+    const root = fileIndex.resolveRoot(payload.rootId);
+    const paths = Array.isArray(payload.paths) ? payload.paths.slice(0, 100) : [];
+    if (!root) return { success: false, error: '目标文件夹不存在' };
+    let imported = 0;
+    const skipped = [];
+    for (const sourceValue of paths) {
+      try {
+        const source = path.resolve(sourceValue);
+        const stat = await fs.promises.stat(source);
+        if (!stat.isFile()) throw new Error('仅支持文件');
+        let destination = path.join(root.path, path.basename(source));
+        for (let suffix = 1; suffix < 1000; suffix += 1) {
+          try { await fs.promises.access(destination); const parsed = path.parse(source); destination = path.join(root.path, `${parsed.name} (${suffix})${parsed.ext}`); }
+          catch { break; }
+        }
+        await fs.promises.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+        imported += 1;
+      } catch (error) { skipped.push({ name: path.basename(String(sourceValue)), reason: error.message }); }
+    }
+    await fileIndex.rescan();
+    return { success: true, imported, skipped };
+  });
   ipcMain.handle('dd:desktop:scan', () => desktopOrganizer.scan());
   ipcMain.handle('dd:desktop:organize', async () => desktopOrganizer.organize());
   ipcMain.handle('dd:desktop:restore-last', async () => desktopOrganizer.restoreLast());
@@ -546,6 +595,32 @@ function registerIpc() {
     mainWindow?.webContents.send('dd:index:updated', appIndex.status());
     return { success: true, restored: result.restored, conflicts: result.conflicts };
   });
+  ipcMain.handle('dd:board:get', async () => {
+    const shortcuts = shortcutBoard.annotate(await desktopOrganizer.listShortcuts());
+    return { shortcuts, categories: shortcutBoard.categories(shortcuts) };
+  });
+  ipcMain.handle('dd:board:category-create', (_event, payload = {}) => mutation(() => ({ category: shortcutBoard.create(payload) })));
+  ipcMain.handle('dd:board:category-update', (_event, payload = {}) => mutation(() => ({ category: shortcutBoard.update(payload.id, payload) })));
+  ipcMain.handle('dd:board:category-delete', (_event, payload = {}) => mutation(() => shortcutBoard.remove(payload.id)));
+  ipcMain.handle('dd:board:assign', async (_event, payload = {}) => {
+    const shortcuts = await desktopOrganizer.listShortcuts();
+    if (!shortcuts.some((item) => item.id === payload.shortcutId)) return { success: false, error: '快捷方式不存在' };
+    return mutation(() => shortcutBoard.assign(payload.shortcutId, payload.categoryId ?? null));
+  });
+  ipcMain.handle('dd:board:import', async (_event, payload = {}) => {
+    const result = await desktopOrganizer.importShortcuts(payload.paths);
+    for (const item of result.imported) shortcutBoard.assign(item.id, payload.categoryId ?? null);
+    await appIndex.rescan();
+    return { ...result, board: { shortcuts: shortcutBoard.annotate(await desktopOrganizer.listShortcuts()) } };
+  });
+  ipcMain.handle('dd:board:pick', async (_event, payload = {}) => {
+    const picked = await dialog.showOpenDialog(mainWindow, { title: '选择要收纳的快捷方式', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Windows 快捷方式', extensions: ['lnk', 'url', 'appref-ms'] }] });
+    if (picked.canceled) return { success: false, canceled: true };
+    const result = await desktopOrganizer.importShortcuts(picked.filePaths);
+    for (const item of result.imported) shortcutBoard.assign(item.id, payload.categoryId ?? null);
+    await appIndex.rescan();
+    return result;
+  });
   ipcMain.handle('dd:weather:get', (_event, payload = {}) => {
     if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
       return {
@@ -556,7 +631,23 @@ function registerIpc() {
     }
     return weatherService.get(payload.city || settingsStore.get().weatherCity, { force: Boolean(payload.force) });
   });
+  ipcMain.handle('dd:weather:get-coordinates', (_event, payload = {}) => {
+    if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') return weatherService.get(payload.city || settingsStore.get().weatherCity).catch(() => ({ city: '当前位置', locationName: '当前位置', current: { temperature: 26, apparentTemperature: 27, relativeHumidity: 60, precipitationProbability: 10, weatherCode: 1, windSpeed: 7, pressure: 1012 }, hourly: [], daily: [] }));
+    return weatherService.getByCoordinates(Number(payload.latitude), Number(payload.longitude), { force: Boolean(payload.force) });
+  });
   ipcMain.handle('dd:media:control', (_event, payload = {}) => controlMedia(payload.action));
+  ipcMain.handle('dd:media:status', () => process.env.DESKTOPDOCK_SMOKE_TEST === '1'
+    ? { available: true, title: 'Windows 媒体会话', artist: 'DesktopDock 测试', status: 'Playing', position: 92, duration: 236 }
+    : mediaStatus());
+  ipcMain.handle('dd:todo:list', () => todoService.list());
+  ipcMain.handle('dd:todo:create', (_event, payload = {}) => mutation(() => ({ todo: todoService.create(payload) })));
+  ipcMain.handle('dd:todo:update', (_event, payload = {}) => mutation(() => ({ todo: todoService.update(payload.id, payload) })));
+  ipcMain.handle('dd:todo:delete', (_event, payload = {}) => mutation(() => todoService.remove(payload.id)));
+  ipcMain.handle('dd:todo:reorder', (_event, payload = {}) => mutation(() => todoService.reorder(payload.ids)));
+  ipcMain.handle('dd:todo:pick-attachments', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: '选择任务附件', properties: ['openFile', 'multiSelections'] });
+    return result.canceled ? [] : result.filePaths;
+  });
   ipcMain.handle('dd:settings:get', () => settingsStore.get());
   ipcMain.handle('dd:settings:set', (_event, payload = {}) => mutation(() => {
     const result = settingsStore.set(payload.key, payload.value);
@@ -604,6 +695,12 @@ function applySetting(key, value) {
     app.setLoginItemSettings(loginItemSettings(settingsStore.get().autoStart, value));
   }
   if (key === 'hotkeySearch' || key === 'hotkeyMain') registerShortcuts();
+  if (key === 'autoStowShortcuts' && value && desktopOrganizer) {
+    void desktopOrganizer.stowShortcuts().then(async () => {
+      await appIndex.rescan();
+      mainWindow?.webContents.send('dd:index:updated', appIndex.status());
+    }).catch((error) => console.error('DesktopDock shortcut stow failed:', error));
+  }
 }
 
 function applyAllSettings(settings) {
@@ -700,6 +797,8 @@ app.whenReady().then(async () => {
   appIndex = createAppIndex(databasePath, applicationRoots(shortcutVaultDirectory));
   fileIndex = createFileIndex(databasePath, fileRoots());
   settingsStore = createSettingsStore(databasePath);
+  shortcutBoard = createShortcutBoard(databasePath);
+  todoService = createTodoService(databasePath);
   weatherService = createWeatherService(path.join(app.getPath('userData'), 'weather-cache.json'));
   desktopOrganizer = createDesktopOrganizer({
     desktopDirectory: app.getPath('desktop'),
@@ -727,6 +826,7 @@ app.whenReady().then(async () => {
   );
   registerIpc();
   try {
+    if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && settingsStore.get().autoStowShortcuts) await desktopOrganizer.stowShortcuts();
     await appIndex.rescan();
     await desktopOrganizer.listShortcuts();
   } catch (error) {
@@ -736,6 +836,15 @@ app.whenReady().then(async () => {
   createMainWindow();
   await createTray();
   applyAllSettings(settingsStore.get());
+  if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+    const notifyTodos = () => {
+      for (const todo of todoService.dueReminders()) {
+        if (Notification.isSupported()) new Notification({ title: '桌面舱待办提醒', body: todo.title }).show();
+      }
+    };
+    notifyTodos();
+    reminderTimer = setInterval(notifyTodos, 30_000);
+  }
   void fileIndex.rescan().then(() => mainWindow?.webContents.send('dd:file-index:updated', fileIndex.status())).catch((error) => {
     console.error('DesktopDock file scan failed:', error);
   });
@@ -757,6 +866,8 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => { isQuitting = true; });
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = null;
   appIndex?.close();
   fileIndex?.close();
   settingsStore?.close();
@@ -767,6 +878,10 @@ app.on('will-quit', () => {
   desktopOrganizer = null;
   settingsStore = null;
   weatherService = null;
+  shortcutBoard?.close();
+  todoService?.close();
+  shortcutBoard = null;
+  todoService = null;
   tray?.destroy();
   tray = null;
 });

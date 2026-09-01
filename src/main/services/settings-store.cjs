@@ -17,11 +17,18 @@ const DEFAULTS = Object.freeze({
   hotkeyMain: 'Alt+D',
   searchResultCount: 10,
   weatherCity: '深圳',
+  autoStowShortcuts: true,
+  fileLayout: 'grid',
+  weatherLayout: 'standard',
+  showTodo: true,
+  showWeather: true,
+  showMedia: true,
+  showFiles: true,
 });
 
 function validateSetting(key, value) {
   if (!Object.hasOwn(DEFAULTS, key)) throw new Error('未知设置项');
-  if (['glassEffect', 'autoStart', 'startMinimized', 'autoHideSearch', 'closeAfterLaunch', 'animations'].includes(key)) {
+  if (['glassEffect', 'autoStart', 'startMinimized', 'autoHideSearch', 'closeAfterLaunch', 'animations', 'autoStowShortcuts', 'showTodo', 'showWeather', 'showMedia', 'showFiles'].includes(key)) {
     if (typeof value !== 'boolean') throw new Error('设置值必须是布尔值');
   } else if (key === 'theme' && !['light', 'dark', 'system'].includes(value)) {
     throw new Error('主题设置无效');
@@ -31,6 +38,10 @@ function validateSetting(key, value) {
     throw new Error('图标大小设置无效');
   } else if (key === 'gridDensity' && !['compact', 'normal', 'comfortable'].includes(value)) {
     throw new Error('网格密度设置无效');
+  } else if (key === 'fileLayout' && !['grid', 'list'].includes(value)) {
+    throw new Error('文件布局设置无效');
+  } else if (key === 'weatherLayout' && !['standard', 'compact', 'hourly', 'week'].includes(value)) {
+    throw new Error('天气布局设置无效');
   } else if (key === 'searchResultCount' && (!Number.isInteger(value) || value < 5 || value > 20)) {
     throw new Error('搜索结果数量应在 5–20 之间');
   } else if (key === 'weatherCity' && (typeof value !== 'string' || !value.trim() || value.trim().length > 80 || /[\r\n\u0000]/u.test(value))) {

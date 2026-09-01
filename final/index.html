@@ -1,24 +1,18 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>桌面舱 DesktopDock 状态栏</title>
+    <title>桌面舱 DesktopDock</title>
     <link rel="stylesheet" href="sidebar.css" />
   </head>
   <body>
     <main class="dock-shell" id="desktopApp">
-      <header class="dock-titlebar">
-        <div class="dock-brand"><span class="dock-brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span><span><strong>桌面舱</strong><small id="dockStatus">桌面状态已就绪</small></span></div>
-        <time id="dockClock" aria-label="当前时间"></time>
-        <div class="dock-window-actions" aria-label="状态栏控制"><button type="button" data-action="refresh-all" title="刷新" aria-label="刷新桌面数据"><span class="fluent-icon" aria-hidden="true">&#xE72C;</span></button><button type="button" data-action="hide-dock" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button></div>
-      </header>
-      <section class="dock-search" aria-label="快速搜索"><span class="fluent-icon" aria-hidden="true">&#xE721;</span><label class="sr-only" for="dockSearch">搜索应用、快捷方式和文件</label><input id="dockSearch" type="search" autocomplete="off" placeholder="搜索应用、快捷方式和文件" /><kbd>Alt + Space</kbd></section>
-      <section class="dock-search-results" id="dockSearchResults" aria-label="搜索结果" hidden></section>
-      <div class="dock-summary" id="dockSummary" aria-live="polite"></div>
+      <header class="dock-titlebar"><div class="dock-brand"><span class="dock-brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span><span><strong>桌面舱</strong><small id="dockStatus">正在读取桌面</small></span></div><time id="dockClock" aria-label="当前时间"></time><div class="dock-window-actions"><button data-action="refresh" title="刷新"><span class="fluent-icon">&#xE72C;</span></button><button data-action="hide" title="隐藏到托盘"><span class="fluent-icon">&#xE738;</span></button></div></header>
+      <section class="dock-search"><span class="fluent-icon">&#xE721;</span><label class="sr-only" for="dockSearch">搜索当前模块</label><input id="dockSearch" type="search" autocomplete="off" placeholder="搜索快捷方式" /><kbd>Alt + Space</kbd></section>
       <section class="dock-content" id="dockContent" tabindex="-1" aria-live="polite"></section>
-      <nav class="dock-nav" id="dockNav" aria-label="桌面舱模块"></nav>
+      <nav class="dock-nav" id="dockNav" aria-label="桌面舱模块"><button class="active" data-nav="desktop"><span class="fluent-icon">&#xE80F;</span><span>桌面</span></button><button data-nav="todo"><span class="fluent-icon">&#xE73E;</span><span>待办</span></button><button data-nav="files"><span class="fluent-icon">&#xED25;</span><span>文件</span></button><button data-nav="widgets"><span class="fluent-icon">&#xE950;</span><span>组件</span></button><button data-nav="settings"><span class="fluent-icon">&#xE713;</span><span>设置</span></button></nav>
     </main>
     <div class="dock-dialog-layer" id="dockDialogLayer" hidden><section class="dock-dialog" id="dockDialog" role="dialog" aria-modal="true" aria-labelledby="dockDialogTitle"></section></div>
     <div class="dock-toast" id="dockToast" role="status" aria-live="polite"></div>
