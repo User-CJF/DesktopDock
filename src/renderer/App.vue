@@ -2,7 +2,7 @@
   <main class="dock-shell" id="desktopApp">
     <header class="dock-titlebar">
       <div class="dock-brand">
-        <span class="dock-brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span>
+        <span class="dock-brand-mark" aria-hidden="true"></span>
         <span><strong>桌面舱</strong><small id="dockStatus">正在读取桌面</small></span>
       </div>
       <time id="dockClock" aria-label="当前时间"></time>

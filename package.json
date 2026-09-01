@@ -47,6 +47,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "assets/DesktopDock.ico",
       "target": [
         "nsis"
       ],
@@ -59,7 +60,7 @@
       "createStartMenuShortcut": true
     },
     "portable": {
-      "artifactName": "DesktopDock-${version}-Portable.${ext}",
+      "artifactName": "DesktopDock.${ext}",
       "requestExecutionLevel": "user"
     }
   }

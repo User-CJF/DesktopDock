@@ -28,7 +28,7 @@ pnpm run portable:win
 
 - `pnpm run check`：语法检查、12 项服务测试和生产构建。
 - `pnpm run smoke`：启动 500px Electron 窗口，验证五个模块、分类/待办 CRUD、安全桥接和无横向溢出；不会移动真实桌面快捷方式。
-- `pnpm run portable:win`：生成 `release/DesktopDock-0.2.0-Portable.exe`。
+- `pnpm run portable:win`：生成 `release/DesktopDock.exe`。
 
 ## 快捷键
 
@@ -49,7 +49,7 @@ tests/                 Node 自动测试
 scripts/               开发、冒烟、打包和说明书生成脚本
 ```
 
-完整产品、操作、数据、安全、架构、测试和运维说明见 `DesktopDock_完整项目说明书.docx`。
+完整产品、操作、数据、安全、架构、测试和运维说明见 `DesktopDock.md`。
 
 ## 数据与边界
 
