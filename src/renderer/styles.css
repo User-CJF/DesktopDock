@@ -1,0 +1,29 @@
+@import "../../final/styles.css";
+
+/* Electron owns the viewport; browser preview keeps the same centered framing. */
+.desktop-frame {
+  -webkit-app-region: no-drag;
+}
+
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button,
+.titlebar a,
+.titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+body.is-electron {
+  background: transparent;
+}
+
+body.is-electron .desktop-frame {
+  width: 100vw;
+  height: 100vh;
+  min-height: 520px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}

@@ -1,0 +1,58 @@
+<template>
+  <main class="desktop-frame" id="desktopApp">
+    <header class="titlebar">
+      <div class="brand" aria-label="桌面舱 DesktopDock">
+        <span class="brand-mark fluent-icon" aria-hidden="true">&#xE80A;</span>
+        <strong>桌面舱</strong>
+        <span class="index-state" id="indexState" aria-live="polite"><i></i><span id="indexStateText">正在读取索引</span></span>
+      </div>
+      <div class="titlebar-actions" aria-label="窗口控制">
+        <button type="button" data-action="minimize" title="最小化" aria-label="最小化">&#x2212;</button>
+        <button type="button" data-action="maximize" title="最大化" aria-label="最大化">&#x25A1;</button>
+        <button type="button" class="close-button" data-action="close-window" title="关闭" aria-label="关闭">&#x00D7;</button>
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <nav id="primaryNav" aria-label="主导航"></nav>
+        <div class="sidebar-status">
+          <span class="status-icon fluent-icon" aria-hidden="true">&#xE895;</span>
+          <span><b id="sidebarItemCount">0 个应用</b><small id="sidebarScanTime">正在读取</small></span>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="commandbar" id="commandbar"></header>
+        <div class="page-content" id="pageContent" tabindex="-1"></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="overlay" id="searchOverlay" hidden>
+    <section class="search-panel" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+      <h2 class="sr-only" id="searchTitle">全局搜索</h2>
+      <div class="search-input-row">
+        <span class="fluent-icon" aria-hidden="true">&#xE721;</span>
+        <label class="sr-only" for="globalSearch">搜索软件、文件、设置</label>
+        <input id="globalSearch" type="search" autocomplete="off" placeholder="搜索软件、文件、设置" />
+        <button type="button" class="icon-button clear-query" data-action="clear-query" title="清除搜索" aria-label="清除搜索" hidden>
+          <span class="fluent-icon" aria-hidden="true">&#xE711;</span>
+        </button>
+      </div>
+      <div class="search-tabs" id="searchTabs" role="tablist" aria-label="搜索类型"></div>
+      <div class="search-results" id="searchResults" role="listbox" aria-label="搜索结果"></div>
+      <footer class="search-footer">
+        <span><kbd>↑↓</kbd> 选择　<kbd>Enter</kbd> 打开　<kbd>Tab</kbd> 切换类型</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+      </footer>
+    </section>
+  </div>
+
+  <div class="overlay" id="modalOverlay" hidden>
+    <section class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"></section>
+  </div>
+
+  <div class="context-menu" id="contextMenu" role="menu" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</template>
