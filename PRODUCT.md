@@ -40,7 +40,7 @@ DesktopDock unifies instant keyboard-first launch and ongoing desktop organizati
 - Keep user data local and target Windows 10/11.
 - Windows Start Menu and desktop application scanning, SQLite persistence, usage counts, pinning, custom-category management, Windows Shell icon extraction/cache, secure Electron IPC, and real application launching are implemented.
 - Metadata-only file indexing, recent-file search/opening, favorite folders, transactional desktop file organization, collision-safe undo, settings persistence, login startup, shortcut re-registration, and configuration import/export are implemented.
-- Desktop file organization never moves folders or shortcuts. The separate shortcut vault moves only current-user desktop shortcut files after explicit confirmation, keeps public shortcuts read-only, preserves Windows system icons, and supports collision-safe restoration. Automated tests use temporary directories; the Electron smoke test performs only a read-only desktop preview.
+- Desktop file organization never moves folders or ordinary files. The separate shortcut vault moves current-user and public desktop shortcut files when Windows permissions allow, preserves Windows system icons, records failures per item, and supports collision-safe restoration. Automated tests use temporary directories; the Electron smoke test performs only a read-only desktop preview.
 
 ## Brand Commitments
 

@@ -148,7 +148,7 @@ function shortcutManagerDialog(categoryId = '') {
   const items = state.board.shortcuts.filter((item) => (item.categoryId || '') === categoryId);
   const categoryOptions = [`<option value="">桌面仓</option>`, ...state.board.categories.map((entry) => `<option value="${esc(entry.id)}">${esc(entry.name)}</option>`)].join('');
   const rows = items.map((item) => `<div class="manager-row"><span class="manager-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span><span class="manager-copy"><b>${esc(item.name)}</b><small>${item.location === 'public' ? '公共桌面' : item.location === 'desktop' ? '当前桌面' : '已收纳'}</small></span><select data-action="assign-select" data-shortcut-id="${esc(item.id)}" data-manager-category="${esc(categoryId)}" aria-label="为 ${esc(item.name)} 选择分类">${categoryOptions.replace(`value="${esc(item.categoryId || '')}"`, `value="${esc(item.categoryId || '')}" selected`)}</select><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`).join('');
-  const body = `<div class="manager-summary">共 ${items.length} 个快捷方式。选择分类后立即保存，也可以拖回桌面仓。</div><div class="manager-list">${rows || '<div class="empty-state">这个区域还没有快捷方式</div>'}</div>`;
+  const body = `<div class="manager-toolbar"><span class="manager-summary">共 ${items.length} 个快捷方式。选择分类后立即保存，也可以拖回桌面仓。</span><button data-action="new-category-from-manager">${icon(ICONS.add)} 新建分类</button></div><div class="manager-list">${rows || '<div class="empty-state">这个区域还没有快捷方式</div>'}</div>`;
   openDialog('管理全部快捷方式', '完整显示当前区域的快捷方式，并可逐项分配分类。', body, '<button data-action="close-dialog">完成</button>');
   void loadShortcutIcons();
 }
@@ -282,9 +282,9 @@ async function loadAll() {
   state.loading = false; render(); void loadWeather(); void loadMedia();
 }
 
-function categoryDialog(category = null) {
+function categoryDialog(category = null, pendingShortcutId = '') {
   const colors = COLORS.map((color) => `<label><input type="radio" name="color" value="${color}" ${(category?.color || COLORS[0]) === color ? 'checked' : ''}><span style="--swatch:${color}"></span></label>`).join('');
-  openDialog(category ? '编辑分类' : '新建分类', '分类由你创建，桌面舱不会自动替你归类。', `<form id="categoryForm" class="dialog-form"><label>名称<input name="name" maxlength="20" required value="${esc(category?.name || '')}" placeholder="例如：工作"></label><fieldset><legend>识别色</legend><div class="color-options">${colors}</div></fieldset></form>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-category" data-category-id="${esc(category?.id || '')}">保存</button>`);
+  openDialog(category ? '编辑分类' : '新建分类', pendingShortcutId ? '保存后会把拖入的快捷方式直接放入这个分类。' : '分类由你创建，桌面舱不会自动替你归类。', `<form id="categoryForm" class="dialog-form"><label>名称<input name="name" maxlength="20" required value="${esc(category?.name || '')}" placeholder="例如：工作"></label><fieldset><legend>识别色</legend><div class="color-options">${colors}</div></fieldset></form>`, `<button data-action="close-dialog">取消</button><button class="primary" data-action="save-category" data-category-id="${esc(category?.id || '')}" data-pending-shortcut-id="${esc(pendingShortcutId)}">保存</button>`);
 }
 function moveShortcutDialog(shortcutId) {
   const item = state.board.shortcuts.find((entry) => entry.id === shortcutId); if (!item) return;
@@ -335,13 +335,14 @@ async function handleAction(button) {
   if (action === 'stow-shortcuts') { closeDialog(); return stowDesktopShortcuts(); }
   if (action === 'new-category') return categoryDialog();
   if (action === 'edit-category') return categoryDialog(state.board.categories.find((item) => item.id === button.dataset.categoryId));
-  if (action === 'save-category') { const form = dialog.querySelector('#categoryForm'); if (!form?.reportValidity()) return; const data = new FormData(form); const payload = { id: button.dataset.categoryId, name: data.get('name'), color: data.get('color') }; const result = payload.id ? await api?.board?.updateCategory?.(payload) : await api?.board?.createCategory?.(payload); if (!resultOk(result)) return showToast(result.error || '分类保存失败', 'error'); closeDialog(); await loadBoard(); render(); return showToast('分类已保存'); }
+  if (action === 'save-category') { const form = dialog.querySelector('#categoryForm'); if (!form?.reportValidity()) return; const data = new FormData(form); const payload = { id: button.dataset.categoryId, name: data.get('name'), color: data.get('color') }; const result = payload.id ? await api?.board?.updateCategory?.(payload) : await api?.board?.createCategory?.(payload); if (!resultOk(result)) return showToast(result.error || '分类保存失败', 'error'); const createdId = result?.category?.id; if (!payload.id && button.dataset.pendingShortcutId && createdId) await api?.board?.assign?.(button.dataset.pendingShortcutId, createdId); closeDialog(); await loadBoard(); render(); return showToast(button.dataset.pendingShortcutId ? '分类已创建，快捷方式已移入' : '分类已保存'); }
   if (action === 'delete-category') { const category = state.board.categories.find((item) => item.id === button.dataset.categoryId); if (!category) return; return openDialog('删除分类', `“${category.name}”内的快捷方式会移回桌面仓，快捷方式本身不会删除。`, '', `<button data-action="close-dialog">取消</button><button class="primary danger" data-action="confirm-delete-category" data-category-id="${esc(category.id)}">删除分类</button>`); }
   if (action === 'confirm-delete-category') { const result = await api?.board?.deleteCategory?.(button.dataset.categoryId); if (!resultOk(result)) return showToast(result.error, 'error'); const id = cardIdForCategory(button.dataset.categoryId); state.cards.order = state.cards.order.filter((value) => value !== id); state.cards.hidden = state.cards.hidden.filter((value) => value !== id); writeStore('desktopdock.cards', state.cards); closeDialog(); await loadBoard(); render(); return showToast('分类已删除'); }
   if (action === 'move-shortcut') return moveShortcutDialog(button.dataset.shortcutId);
   if (action === 'assign-shortcut') { closeDialog(); return assignShortcut(button.dataset.shortcutId, button.dataset.categoryId || null); }
   if (action === 'import-shortcuts') { const result = await api?.board?.pick?.(button.dataset.categoryId || null); if (result?.canceled) return; if (!resultOk(result)) return showToast(result?.error || '导入失败', 'error'); await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式`); }
   if (action === 'manage-category') return shortcutManagerDialog(button.dataset.categoryId || '');
+  if (action === 'new-category-from-manager') return categoryDialog();
   if (action === 'assign-select') { const result = await api?.board?.assign?.(button.dataset.shortcutId, button.value || null); if (!resultOk(result)) return showToast(result?.error || '归类失败', 'error'); await loadBoard(); render(); shortcutManagerDialog(button.dataset.managerCategory || ''); return showToast(button.value ? '已分配到分类' : '已移回桌面仓'); }
   if (action === 'new-todo') return todoDialog();
   if (action === 'manage-todos') return todoManagerDialog();
@@ -391,16 +392,24 @@ document.addEventListener('keydown', (event) => {
 });
 document.addEventListener('dragstart', (event) => { const shortcut = event.target.closest('[data-shortcut]'); const header = event.target.closest('[data-card-drag]'); if (shortcut) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-shortcut', shortcut.dataset.shortcut); shortcut.classList.add('dragging'); } else if (header) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-card', header.dataset.cardDrag); header.closest('.bento-card')?.classList.add('dragging'); } });
 document.addEventListener('dragend', () => document.querySelectorAll('.dragging,.drop-active').forEach((node) => node.classList.remove('dragging', 'drop-active')));
-document.addEventListener('dragover', (event) => { const target = event.target.closest('[data-drop-category],[data-card-id],.bento-column'); if (!target) return; event.preventDefault(); target.classList.add('drop-active'); });
+document.addEventListener('dragover', (event) => { const target = event.target.closest('[data-drop-category],[data-card-id],.bento-column,#dockContent'); if (!target) return; event.preventDefault(); target.classList.add('drop-active'); });
 document.addEventListener('dragleave', (event) => event.target.closest('.drop-active')?.classList.remove('drop-active'));
 document.addEventListener('drop', async (event) => {
-  const category = event.target.closest('[data-drop-category]'); const cardTarget = event.target.closest('[data-card-id]'); const columnTarget = event.target.closest('.bento-column');
-  if (!category && !cardTarget && !columnTarget) return; event.preventDefault(); document.querySelectorAll('.drop-active').forEach((node) => node.classList.remove('drop-active'));
+  const category = event.target.closest('[data-drop-category]'); const cardTarget = event.target.closest('[data-card-id]'); const columnTarget = event.target.closest('.bento-column'); const board = event.target.closest('#dockContent');
+  if (!category && !cardTarget && !columnTarget && !board) return; event.preventDefault(); document.querySelectorAll('.drop-active').forEach((node) => node.classList.remove('drop-active'));
   const shortcutId = event.dataTransfer.getData('application/x-desktopdock-shortcut');
   if (category && shortcutId) return assignShortcut(shortcutId, category.dataset.dropCategory || null);
+  if (board && shortcutId && !category && !cardTarget) return categoryDialog(null, shortcutId);
   if (category && event.dataTransfer.types.includes('Files')) { const paths = await droppedPaths(event); const result = await api?.board?.import?.(paths, category.dataset.dropCategory || null); if (!resultOk(result)) return showToast(result.error || '导入失败', 'error'); await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式`); }
   const cardId = event.dataTransfer.getData('application/x-desktopdock-card'); const targetId = cardTarget?.dataset.cardId;
   if (cardId && cardId !== targetId) { placeCard(cardId, targetId || null, columnTarget?.dataset.column); render(); showToast('卡片位置已更新'); }
+});
+
+document.addEventListener('contextmenu', (event) => {
+  const board = event.target.closest('#dockContent');
+  if (!board || event.target.closest('.bento-card, .shortcut-tile, button, input, select, textarea, a')) return;
+  event.preventDefault();
+  categoryDialog();
 });
 
 api?.onShowSearch?.(() => { search.focus(); search.select(); });
