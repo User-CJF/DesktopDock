@@ -1,76 +1,153 @@
-# DesktopDock Design System
+---
+name: DesktopDock
+description: Windows 桌面右侧的透明信息仓与快捷方式启动面板
+colors:
+  dark-card: "rgba(31, 43, 47, 0.78)"
+  light-card: "rgba(235, 247, 252, 0.82)"
+  dark-text: "#f4f8f9"
+  light-text: "#162126"
+  accent-dark: "#55b9ed"
+  accent-light: "#0078d4"
+  dark-muted: "#92a3a8"
+  light-muted: "#596b73"
+  border-dark: "rgba(210, 232, 238, 0.16)"
+  border-light: "rgba(82, 117, 132, 0.2)"
+typography:
+  display:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontSize: "25px"
+    fontWeight: 680
+    lineHeight: 1
+    letterSpacing: "0"
+  title:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontSize: "12px"
+    fontWeight: 620
+    lineHeight: 1.2
+  body:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontSize: "11px"
+    fontWeight: 400
+    lineHeight: 1.4
+  label:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontSize: "10px"
+    fontWeight: 500
+    lineHeight: 1.2
+rounded:
+  sm: "4px"
+  md: "6px"
+spacing:
+  xs: "3px"
+  sm: "4px"
+  md: "7px"
+  lg: "10px"
+components:
+  glass-card:
+    backgroundColor: "{colors.dark-card}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.md}"
+    padding: "7px"
+  search-rail:
+    backgroundColor: "{colors.dark-card}"
+    textColor: "{colors.dark-text}"
+    rounded: "{rounded.md}"
+    height: "38px"
+---
 
-## Direction
+# Design System: DesktopDock
 
-DesktopDock uses the selected **C · Windows 原生** direction as a right-edge desktop status bar. It should feel like a native Windows 11 companion surface rather than a conventional application window: glanceable, keyboard-friendly, compact, and predictable. Win10 receives solid-surface fallbacks rather than simulated blur.
+## Overview
 
-## Mode
+**Creative North Star: "The Desktop Information Wall"**
 
-Operate. Users repeatedly launch, find, classify, and organize local items. Task speed and state clarity outrank expression.
+DesktopDock is a quiet, dense Windows companion surface attached to the desktop edge. The wallpaper remains visible beside it and subtly passes through its Acrylic layers. The interface is for repeated glances and quick actions, so content leads, cards stay compact, and the product avoids the visual grammar of a full management window.
 
-## Visual World
+**Key Characteristics:**
+- Right-edge, full-work-area Acrylic surface with no titlebar or bottom navigation.
+- 4px seams, 6px card corners, hairline environment-colored borders.
+- Native Fluent controls and real Windows Shell application icons.
+- A responsive 58/42 compact grid and 35/34/31 wide grid.
 
-- Windows Fluent structure with Mica for the main window and Acrylic only for transient search, menus, and protected dialogs.
-- Neutral surfaces carry most of the interface. Brand blue marks focus, selection, and primary actions.
-- Application icons and filenames are the strongest visual signals; containers remain quiet.
-- No decorative gradients, glow, oversized radii, nested cards, or broad colored shadows.
+## Colors
 
-## Tokens
+The palette is restrained: cool translucent surfaces, one blue interaction accent, and separate readable muted tones for light and dark wallpaper scenes.
 
-### Color
+### Primary
+- **Desktop Blue** (`#0078d4` light, `#55b9ed` dark): focus, active controls, weather and card actions.
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Window | `#F3F4F7` | `#11121A` |
-| Surface | `#FFFFFF` | `#1B1C28` |
-| Secondary surface | `#EAECF1` | `#262736` |
-| Primary text | `#1B1B22` | `#F0F0F4` |
-| Secondary text | `#5D6470` | `#B7B7C7` |
-| Border | `#DADDE4` | `#353647` |
-| Accent | `#4F6BFF` | `#7A8FFF` |
-| Accent surface | `rgba(79,107,255,.11)` | `rgba(122,143,255,.16)` |
-| Success | `#21865B` | `#4BC38A` |
-| Warning | `#A56300` | `#F3B454` |
-| Danger | `#C42B1C` | `#FF6B62` |
+### Neutral
+- **Acrylic Light** (`rgba(235,247,252,.82)`): light card surface.
+- **Acrylic Dark** (`rgba(31,43,47,.78)`): dark card surface.
+- **Ink Light** (`#162126`) and **Ink Dark** (`#f4f8f9`): primary text.
+- **Muted Light** (`#596b73`) and **Muted Dark** (`#92a3a8`): supporting text with readable contrast.
+- **Hairline Light/Dark** (`rgba(82,117,132,.2)` / `rgba(210,232,238,.16)`): card and control boundaries.
 
-### Typography
+**The Wallpaper-Through Rule.** The panel canvas and ordinary cards remain translucent; wallpaper is part of the visual scene and must not be replaced by an opaque app background.
 
-Use `Segoe UI Variable`, `Segoe UI`, and `Microsoft YaHei UI`. Page titles are 20px/600, section titles 16px/600, application and control labels 13px, supporting text 12px. Letter spacing remains `0`.
+## Typography
 
-### Geometry
+**Display Font:** Segoe UI Variable Text (with Segoe UI and Microsoft YaHei UI fallbacks)
+**Body Font:** Segoe UI Variable Text (with Segoe UI and Microsoft YaHei UI fallbacks)
+**Label/Mono Font:** system UI numerals with tabular figures where time or weather data changes.
 
-- Spacing: `4 / 8 / 12 / 16 / 24 / 32`.
-- Window radius: 12px on Win11, square fallback on Win10.
-- Cards, inputs, menus: 6–8px.
-- Buttons: 6px.
-- Controls: 32px visual height; pointer target never below 24px.
-- Shadows: only transient layers use elevation. Ordinary content relies on spacing and 1px borders.
+**Character:** Native, compact, and information-first. Large type is reserved for temperature and time; application labels stay at the requested 10px floor so four-column icon grids remain stable.
+
+### Hierarchy
+- **Display** (680, 18–25px, 1): weather temperature and compact clock.
+- **Title** (620, 12px, 1.2): card titles and primary controls.
+- **Body** (400–550, 10–11px, 1.4): task, note, file, and media text.
+- **Label** (500, 10px, 1.2): application names and secondary metadata.
 
 ## Layout
 
-- Production surface: fixed 392px width, positioned against the active display's right work-area edge.
-- Status header: 48px with product state, clock, refresh, and tray-hide actions.
-- Search: always available directly under the status header.
-- Content: vertically scrollable desktop, application, file, and settings modules.
-- Navigation: four-item bottom module switcher; no large sidebar or conventional command bar.
-- Desktop shortcuts: four-column grid with progressive Shell icon hydration.
+The Electron window is positioned against the active display's right work-area edge and fills the height above the taskbar. Production width is approximately 41% of the work area, clamped to 460–560px. The search rail is 38px high. Below it, cards sit in a single scrolling region with 4px gaps.
 
-## Interaction
+At 460–519px, the dashboard uses two columns at 58/42. At 520–560px it uses three columns at 35/34/31. Card order and column placement are stored per mode, and user categories are added to the same wall without automatic classification.
 
-- `Alt+Space` opens search; `Esc` closes; arrow keys move selection; `Enter` opens the selected result; `Tab` switches result type only while the search input is focused.
-- Active navigation uses both an accent rail and a surface change.
-- Focus rings remain visible on every operable control.
-- Consequential organization actions use a focused confirmation inside the status bar, create a restore point, report completion, and offer restoration.
-- Closing the surface hides it to the tray; only the explicit settings action exits the process.
-- Drag-based product capabilities must also have menu or button alternatives.
+## Elevation & Depth
 
-## Motion
+Depth comes from Acrylic blur and tonal layering, not heavy shadows. Cards use 22px backdrop blur and a low-opacity 4px/12px separation shadow. Dialogs and search results may use a stronger transient shadow and a 6px scrim blur.
 
-- Search enters in 180ms and leaves in 120ms using deceleration/acceleration respectively.
-- Hover and pressed feedback stays within 80–120ms.
-- No bounce, overshoot, decorative entrance choreography, or layout-changing animation.
-- `prefers-reduced-motion` disables non-essential movement.
+**The Quiet Elevation Rule.** Resting cards use a hairline border and translucency; shadows are only strong enough to separate transient layers.
 
-## Responsive Behavior
+## Shapes
 
-The shipped target is a fixed-width Windows desktop status bar. Its height follows the active display work area between 560px and 920px, while internal content scrolls without horizontal overflow. The browser preview uses the same narrow composition.
+The shape language is compact and rectangular: 6px card corners, 4px control corners, 1px environment-colored borders, and no oversized pills. Icon tiles reserve fixed cells so long names wrap to two lines without moving neighboring icons.
+
+## Components
+
+### Buttons
+- **Shape:** compact 4px corners with 24–28px visual targets.
+- **Primary:** Windows blue for save/action states; controls use icon plus a visible tooltip/aria label where text is not present.
+- **Hover / Focus:** a subtle surface highlight and a 2px visible focus ring; no scale or layout shift.
+
+### Cards / Containers
+- **Corner Style:** 6px.
+- **Background:** Acrylic Light or Acrylic Dark with 22px blur.
+- **Shadow Strategy:** low ambient separation only; dialogs/search may elevate.
+- **Border:** 1px translucent environment-colored line.
+- **Internal Padding:** 7px with 4px inter-card seams.
+
+### Inputs / Fields
+- **Style:** transparent input inside the 38px search rail, or a 4px bordered field in dialogs.
+- **Focus:** visible blue outline and preserved caret; Escape clears search or closes a dialog.
+
+### Navigation
+- **Style:** no persistent navigation. Module access is represented by simultaneous cards; card menus provide reordering, hiding, collapsing, resizing, and category deletion.
+
+### Shortcut Grid
+- **Signature:** real Windows Shell icon data, fixed 29px icon cell, 10px label, two-line clamp, drag-to-classify with menu and keyboard alternatives.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** keep the panel anchored to the right desktop layer and leave wallpaper visible on the left.
+- **Do** preserve 4px gaps, 6px corners, native Fluent glyphs, and real shortcut icons.
+- **Do** offer keyboard actions for every drag action, including card movement and shortcut categorization.
+- **Do** test both 460px dark and 540px light states for overflow and contrast.
+
+### Don't:
+- **Don't** add a conventional titlebar, sidebar, bottom navigation, or opaque full-panel background.
+- **Don't** use decorative gradients, thick borders, oversized shadows, emoji structural icons, or scaled hover effects.
+- **Don't** auto-classify user shortcuts; categories are created and removed by the user.

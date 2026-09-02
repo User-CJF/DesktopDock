@@ -13,6 +13,8 @@ const { controlMedia, mediaStatus } = require('./services/media-control.cjs');
 const { createShortcutBoard } = require('./services/shortcut-board.cjs');
 const { createTodoService } = require('./services/todo-service.cjs');
 
+const isVisualTest = process.env.DESKTOPDOCK_VISUAL_TEST === '1';
+
 if (process.env.DESKTOPDOCK_SMOKE_TEST === '1') {
   app.disableHardwareAcceleration();
   const smokeData = path.join(os.tmpdir(), `desktopdock-smoke-${process.pid}`);
@@ -284,18 +286,19 @@ async function runSidebarSmokeTest(window) {
       const todoCreated = await window.desktopDock.todo.create({ title: '冒烟任务', color: 'blue', recurrence: 'none' });
       const todoUpdated = await window.desktopDock.todo.update({ id: todoCreated.todo.id, title: '冒烟任务', completed: true });
       const todoDeleted = await window.desktopDock.todo.delete(todoCreated.todo.id);
+      await waitUntil(() => Boolean(document.querySelector('.weather-card')), 4000);
       document.querySelector('[data-action="new-category"]')?.click();
       const categoryEditor = Boolean(document.querySelector('#categoryForm'));
       document.querySelector('[data-action="close-dialog"]')?.click();
-      document.querySelector('[data-nav="todo"]')?.click();
-      const todoView = document.querySelector('.todo-list');
-      document.querySelector('[data-nav="files"]')?.click();
-      const filesView = document.querySelector('.file-collection');
-      document.querySelector('[data-nav="widgets"]')?.click();
-      await waitUntil(() => Boolean(document.querySelector('.weather-panel')), 4000);
-      const widgetsView = document.querySelector('.media-panel') && document.querySelector('.weather-panel');
-      document.querySelector('[data-nav="settings"]')?.click();
-      const settingsView = document.querySelectorAll('.settings-section').length === 4;
+      document.querySelector('[data-action="dashboard-settings"]')?.click();
+      const settingsView = Boolean(document.querySelector('.setting-list'));
+      document.querySelector('[data-action="close-dialog"]')?.click();
+      const searchInput = document.querySelector('#dockSearch');
+      searchInput.value = 'test';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const searchView = Boolean(document.querySelector('.search-result-list'));
+      searchInput.value = '';
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
       return {
         loaded,
         bridge: window.desktopDock?.isElectron === true,
@@ -306,22 +309,28 @@ async function runSidebarSmokeTest(window) {
         settingsPersistence: mutation.success && persisted,
         categoryCrud: created.success && categoryPersisted && deleted.success,
         todoCrud: todoCreated.success && todoUpdated.todo.completed && todoDeleted.success,
-        desktopView: Boolean(document.querySelector('[data-nav="desktop"]')),
-        todoView: Boolean(todoView),
-        filesView: Boolean(filesView),
-        widgetsView: Boolean(widgetsView),
+        dashboardView: Boolean(document.querySelector('.bento-dashboard')),
+        todoView: Boolean(document.querySelector('.todo-card')),
+        filesView: Boolean(document.querySelector('.files-card')),
+        widgetsView: Boolean(document.querySelector('.media-card') && document.querySelector('.weather-card')),
+        notesView: Boolean(document.querySelector('.notes-card')),
+        compactCards: [...document.querySelectorAll('.bento-card')].every((card) => card.getBoundingClientRect().width > 0),
+        searchView,
         settingsView,
         categoryEditor,
         rootsBridge: Array.isArray(roots),
       };
     })()`);
+    window.setBounds({ ...window.getBounds(), width: 460 });
+    await window.webContents.executeJavaScript("document.documentElement.dataset.theme='dark'; window.dispatchEvent(new Event('resize'))");
     await new Promise((resolve) => setTimeout(resolve, 220));
-    const settingsScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-widget-settings.png'), settingsScreenshot.toPNG());
-    await window.webContents.executeJavaScript("document.querySelector('[data-nav=\"desktop\"]')?.click()");
-    await new Promise((resolve) => setTimeout(resolve, 180));
-    const desktopScreenshot = await window.webContents.capturePage();
-    fs.writeFileSync(smokeArtifactPath('electron-widget-dock.png'), desktopScreenshot.toPNG());
+    const compactScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-dock-460-dark.png'), compactScreenshot.toPNG());
+    window.setBounds({ ...window.getBounds(), width: 540 });
+    await window.webContents.executeJavaScript("document.documentElement.dataset.theme='light'; window.dispatchEvent(new Event('resize'))");
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    const wideScreenshot = await window.webContents.capturePage();
+    fs.writeFileSync(smokeArtifactPath('electron-dock-540-light.png'), wideScreenshot.toPNG());
     const passed = Object.values(result).every(Boolean);
     console.log(`DesktopDock sidebar smoke test: ${JSON.stringify(result)}`);
     if (process.env.DESKTOPDOCK_SMOKE_RESULT) {
@@ -340,16 +349,16 @@ async function runSidebarSmokeTest(window) {
 function createMainWindow() {
   const isSmokeTest = process.env.DESKTOPDOCK_SMOKE_TEST === '1';
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = 500;
+  const width = isSmokeTest || isVisualTest ? 540 : Math.max(460, Math.min(560, Math.round(workArea.width * 0.41)));
   const height = workArea.height;
   mainWindow = new BrowserWindow({
     width,
     height,
     x: workArea.x + workArea.width - width,
     y: workArea.y,
-    minWidth: width,
+    minWidth: 460,
     minHeight: Math.min(560, height),
-    maxWidth: width,
+    maxWidth: 560,
     show: false,
     frame: false,
     resizable: false,
@@ -359,7 +368,7 @@ function createMainWindow() {
     skipTaskbar: !isSmokeTest,
     alwaysOnTop: false,
     backgroundColor: isSmokeTest ? '#f3f3f3' : '#00000000',
-    backgroundMaterial: process.platform === 'win32' && !isSmokeTest ? 'mica' : 'none',
+    backgroundMaterial: process.platform === 'win32' && !isSmokeTest ? 'acrylic' : 'none',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -423,13 +432,14 @@ function currentWindow(event) {
 function positionDockWindow() {
   if (!mainWindow) return;
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const [width, height] = mainWindow.getSize();
+  const [, height] = mainWindow.getSize();
+  const width = process.env.DESKTOPDOCK_SMOKE_TEST === '1' ? mainWindow.getSize()[0] : Math.max(460, Math.min(560, Math.round(workArea.width * 0.41)));
   mainWindow.setBounds({ x: workArea.x + workArea.width - width, y: workArea.y, width, height: workArea.height }, true);
   if (process.platform === 'win32' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') void attachWindowToDesktop();
 }
 
 async function createTray() {
-  if (tray || process.env.DESKTOPDOCK_SMOKE_TEST === '1') return;
+  if (tray || process.env.DESKTOPDOCK_SMOKE_TEST === '1' || isVisualTest) return;
   let image = await app.getFileIcon(process.execPath, { size: 'small' }).catch(() => nativeImage.createEmpty());
   if (image.isEmpty()) image = nativeImage.createFromPath(process.execPath);
   tray = new Tray(image.resize({ width: 16, height: 16 }));
@@ -639,6 +649,12 @@ function registerIpc() {
   ipcMain.handle('dd:media:status', () => process.env.DESKTOPDOCK_SMOKE_TEST === '1'
     ? { available: true, title: 'Windows 媒体会话', artist: 'DesktopDock 测试', status: 'Playing', position: 92, duration: 236 }
     : mediaStatus());
+  ipcMain.handle('dd:search:web', (_event, payload = {}) => {
+    const query = typeof payload.query === 'string' ? payload.query.trim().slice(0, 500) : '';
+    if (!query) return { success: false, error: '搜索内容为空' };
+    void shell.openExternal(`https://www.bing.com/search?q=${encodeURIComponent(query)}`);
+    return { success: true };
+  });
   ipcMain.handle('dd:todo:list', () => todoService.list());
   ipcMain.handle('dd:todo:create', (_event, payload = {}) => mutation(() => ({ todo: todoService.create(payload) })));
   ipcMain.handle('dd:todo:update', (_event, payload = {}) => mutation(() => ({ todo: todoService.update(payload.id, payload) })));
@@ -688,14 +704,14 @@ function registerIpc() {
 
 function applySetting(key, value) {
   if (key === 'theme') nativeTheme.themeSource = value;
-  if (key === 'autoStart' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+  if (key === 'autoStart' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && !isVisualTest) {
     app.setLoginItemSettings(loginItemSettings(value, settingsStore.get().startMinimized));
   }
-  if (key === 'startMinimized' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+  if (key === 'startMinimized' && process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && !isVisualTest) {
     app.setLoginItemSettings(loginItemSettings(settingsStore.get().autoStart, value));
   }
   if (key === 'hotkeySearch' || key === 'hotkeyMain') registerShortcuts();
-  if (key === 'autoStowShortcuts' && value && desktopOrganizer) {
+  if (key === 'autoStowShortcuts' && value && desktopOrganizer && !isVisualTest) {
     void desktopOrganizer.stowShortcuts().then(async () => {
       await appIndex.rescan();
       mainWindow?.webContents.send('dd:index:updated', appIndex.status());
@@ -705,7 +721,7 @@ function applySetting(key, value) {
 
 function applyAllSettings(settings) {
   nativeTheme.themeSource = settings.theme;
-  if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+  if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && !isVisualTest) {
     app.setLoginItemSettings(loginItemSettings(settings.autoStart, settings.startMinimized));
   }
   registerShortcuts();
@@ -826,7 +842,7 @@ app.whenReady().then(async () => {
   );
   registerIpc();
   try {
-    if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && settingsStore.get().autoStowShortcuts) await desktopOrganizer.stowShortcuts();
+    if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && !isVisualTest && settingsStore.get().autoStowShortcuts) await desktopOrganizer.stowShortcuts();
     await appIndex.rescan();
     await desktopOrganizer.listShortcuts();
   } catch (error) {
@@ -836,7 +852,7 @@ app.whenReady().then(async () => {
   createMainWindow();
   await createTray();
   applyAllSettings(settingsStore.get());
-  if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1') {
+  if (process.env.DESKTOPDOCK_SMOKE_TEST !== '1' && !isVisualTest) {
     const notifyTodos = () => {
       for (const todo of todoService.dueReminders()) {
         if (Notification.isSupported()) new Notification({ title: '桌面舱待办提醒', body: todo.title }).show();

@@ -1,37 +1,21 @@
 <template>
   <main class="dock-shell" id="desktopApp">
-    <header class="dock-titlebar">
-      <div class="dock-brand">
-        <span class="dock-brand-mark" aria-hidden="true"></span>
-        <span><strong>桌面舱</strong><small id="dockStatus">正在读取桌面</small></span>
-      </div>
-      <time id="dockClock" aria-label="当前时间"></time>
-      <div class="dock-window-actions" aria-label="窗口操作">
-        <button type="button" data-action="refresh" title="刷新" aria-label="刷新当前内容"><span class="fluent-icon" aria-hidden="true">&#xE72C;</span></button>
-        <button type="button" data-action="hide" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button>
-      </div>
+    <header class="dock-searchbar">
+      <span class="dock-brand-mark" aria-hidden="true"></span>
+      <span class="fluent-icon search-glyph" aria-hidden="true">&#xE721;</span>
+      <label class="sr-only" for="dockSearch">搜索应用、文件或网页</label>
+      <input id="dockSearch" type="search" autocomplete="off" placeholder="搜索应用、文件或网页" />
+      <span class="dock-state" id="dockStatus">正在读取桌面</span>
+      <button type="button" class="top-action" data-action="dashboard-settings" title="面板设置" aria-label="打开面板设置"><span class="fluent-icon" aria-hidden="true">&#xE713;</span></button>
+      <button type="button" class="top-action" data-action="hide" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="fluent-icon" aria-hidden="true">&#xE738;</span></button>
     </header>
 
-    <section class="dock-search" aria-label="搜索">
-      <span class="fluent-icon" aria-hidden="true">&#xE721;</span>
-      <label class="sr-only" for="dockSearch">搜索当前模块</label>
-      <input id="dockSearch" type="search" autocomplete="off" placeholder="搜索快捷方式" />
-      <kbd>Alt + Space</kbd>
-    </section>
-
+    <section class="search-results" id="searchResults" aria-label="搜索结果" hidden></section>
     <section class="dock-content" id="dockContent" tabindex="-1" aria-live="polite"></section>
-
-    <nav class="dock-nav" id="dockNav" aria-label="桌面舱模块">
-      <button type="button" class="active" data-nav="desktop"><span class="fluent-icon" aria-hidden="true">&#xE80F;</span><span>桌面</span></button>
-      <button type="button" data-nav="todo"><span class="fluent-icon" aria-hidden="true">&#xE73E;</span><span>待办</span></button>
-      <button type="button" data-nav="files"><span class="fluent-icon" aria-hidden="true">&#xED25;</span><span>文件</span></button>
-      <button type="button" data-nav="widgets"><span class="fluent-icon" aria-hidden="true">&#xE950;</span><span>组件</span></button>
-      <button type="button" data-nav="settings"><span class="fluent-icon" aria-hidden="true">&#xE713;</span><span>设置</span></button>
-    </nav>
   </main>
 
   <div class="dock-dialog-layer" id="dockDialogLayer" hidden>
-    <section class="dock-dialog" id="dockDialog" role="dialog" aria-modal="true" aria-labelledby="dockDialogTitle"></section>
+    <section class="dock-dialog" id="dockDialog" role="dialog" aria-modal="true" aria-labelledby="dockDialogTitle" aria-describedby="dockDialogDescription"></section>
   </div>
   <div class="dock-toast" id="dockToast" role="status" aria-live="polite"></div>
 </template>

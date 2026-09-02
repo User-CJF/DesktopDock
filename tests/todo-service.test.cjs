@@ -10,8 +10,9 @@ test('todo service persists detail fields, completion and order', () => {
   const todos = createTodoService(path.join(directory, 'data.db'));
   const first = todos.create({ title: '提交周报', color: 'green', recurrence: 'weekly', reminderAt: '2026-09-01T08:00', attachments: ['C:\\work\\report.docx'] });
   const second = todos.create({ title: '整理桌面', color: 'blue' });
-  const updated = todos.update(first.id, { title: first.title, completed: true, dueAt: '2026-09-02T18:00' });
+  const updated = todos.update(first.id, { title: first.title, completed: true, pinned: true, dueAt: '2026-09-02T18:00' });
   assert.equal(updated.completed, true);
+  assert.equal(updated.pinned, true);
   assert.equal(updated.recurrence, 'weekly');
   assert.equal(updated.attachments.length, 1);
   assert.equal(todos.list().filter((item) => item.title === '提交周报').length, 2);

@@ -7,6 +7,7 @@ dist/
 release/
 project/
 /*.exe
+.impeccable/review/
 
 # Local Electron data
 *.db

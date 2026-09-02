@@ -94,6 +94,9 @@ const api = Object.freeze({
     control: (action) => ipcRenderer.invoke('dd:media:control', { action }),
     status: () => ipcRenderer.invoke('dd:media:status'),
   }),
+  search: Object.freeze({
+    web: (query) => ipcRenderer.invoke('dd:search:web', { query }),
+  }),
   todo: Object.freeze({
     list: () => ipcRenderer.invoke('dd:todo:list'),
     create: (todo) => ipcRenderer.invoke('dd:todo:create', todo),

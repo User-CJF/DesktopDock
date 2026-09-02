@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T00:00:00.000Z",
+  "title": "Design System: DesktopDock",
+  "extensions": {
+    "shadows": [
+      { "name": "card-separation", "value": "0 4px 12px rgba(0,0,0,.055)", "purpose": "Separate dense translucent cards without heavy elevation." },
+      { "name": "transient-layer", "value": "0 12px 30px rgba(0,0,0,.22)", "purpose": "Lift search results and dialogs above the card wall." }
+    ],
+    "motion": [
+      { "name": "state-standard", "value": "150ms cubic-bezier(.2,0,0,1)", "purpose": "Hover, focus, collapse and surface feedback." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "460–519px" },
+      { "name": "wide", "value": "520–560px" }
+    ]
+  },
+  "narrative": {
+    "northStar": "The Desktop Information Wall",
+    "overview": "DesktopDock is a quiet, dense Windows companion surface attached to the desktop edge. The wallpaper remains visible beside it and subtly passes through its Acrylic layers.",
+    "keyCharacteristics": ["Right-edge Acrylic", "4px seams", "Native Shell icons", "58/42 and 35/34/31 layouts"],
+    "rules": [
+      { "name": "The Wallpaper-Through Rule", "body": "The panel canvas and ordinary cards remain translucent.", "section": "colors" },
+      { "name": "The Quiet Elevation Rule", "body": "Resting cards use a hairline border and translucency; shadows only separate transient layers.", "section": "elevation" }
+    ],
+    "dos": ["Keep the panel anchored to the right desktop layer.", "Preserve 4px gaps and real shortcut icons."],
+    "donts": ["Add a conventional titlebar or bottom navigation.", "Auto-classify user shortcuts."]
+  }
+}

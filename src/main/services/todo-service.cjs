@@ -29,6 +29,7 @@ function createTodoService(databasePath) {
       reminder_notified_at TEXT,
       recurrence TEXT NOT NULL DEFAULT 'none',
       attachments TEXT NOT NULL DEFAULT '[]',
+      pinned INTEGER NOT NULL DEFAULT 0,
       completed INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -38,17 +39,21 @@ function createTodoService(databasePath) {
   if (!database.prepare('PRAGMA table_info(todos)').all().some((column) => column.name === 'reminder_notified_at')) {
     database.exec('ALTER TABLE todos ADD COLUMN reminder_notified_at TEXT');
   }
+  if (!database.prepare('PRAGMA table_info(todos)').all().some((column) => column.name === 'pinned')) {
+    database.exec('ALTER TABLE todos ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+  }
 
   const parse = (row) => row ? ({
     ...row,
     completed: Boolean(row.completed),
+    pinned: Boolean(row.pinned),
     attachments: (() => { try { return JSON.parse(row.attachments); } catch { return []; } })(),
   }) : null;
 
   function list() {
     return database.prepare(`SELECT id, title, notes, color, due_at AS dueAt, reminder_at AS reminderAt, reminder_notified_at AS reminderNotifiedAt,
-      recurrence, attachments, completed, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
-      FROM todos ORDER BY completed, sort_order, created_at`).all().map(parse);
+      recurrence, attachments, pinned, completed, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+      FROM todos ORDER BY pinned DESC, completed, sort_order, created_at`).all().map(parse);
   }
 
   function normalize(input, existing = {}) {
@@ -68,8 +73,8 @@ function createTodoService(databasePath) {
     const id = `todo_${crypto.randomBytes(10).toString('hex')}`;
     const sortOrder = database.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS value FROM todos').get().value;
     const now = new Date().toISOString();
-    database.prepare(`INSERT INTO todos (id, title, notes, color, due_at, reminder_at, recurrence, attachments, completed, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, todo.title, todo.notes, todo.color, todo.dueAt, todo.reminderAt, todo.recurrence, JSON.stringify(todo.attachments), sortOrder, now, now);
+    database.prepare(`INSERT INTO todos (id, title, notes, color, due_at, reminder_at, recurrence, attachments, pinned, completed, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`).run(id, todo.title, todo.notes, todo.color, todo.dueAt, todo.reminderAt, todo.recurrence, JSON.stringify(todo.attachments), input.pinned ? 1 : 0, sortOrder, now, now);
     return list().find((item) => item.id === id);
   }
 
@@ -78,9 +83,10 @@ function createTodoService(databasePath) {
     if (!existing) throw new Error('任务不存在');
     const todo = normalize(input, existing);
     const completed = typeof input.completed === 'boolean' ? input.completed : existing.completed;
+    const pinned = typeof input.pinned === 'boolean' ? input.pinned : existing.pinned;
     const reminderNotifiedAt = todo.reminderAt === existing.reminderAt ? existing.reminderNotifiedAt : null;
-    database.prepare(`UPDATE todos SET title=?, notes=?, color=?, due_at=?, reminder_at=?, reminder_notified_at=?, recurrence=?, attachments=?, completed=?, updated_at=? WHERE id=?`)
-      .run(todo.title, todo.notes, todo.color, todo.dueAt, todo.reminderAt, reminderNotifiedAt, todo.recurrence, JSON.stringify(todo.attachments), completed ? 1 : 0, new Date().toISOString(), id);
+    database.prepare(`UPDATE todos SET title=?, notes=?, color=?, due_at=?, reminder_at=?, reminder_notified_at=?, recurrence=?, attachments=?, pinned=?, completed=?, updated_at=? WHERE id=?`)
+      .run(todo.title, todo.notes, todo.color, todo.dueAt, todo.reminderAt, reminderNotifiedAt, todo.recurrence, JSON.stringify(todo.attachments), pinned ? 1 : 0, completed ? 1 : 0, new Date().toISOString(), id);
     if (!existing.completed && completed && todo.recurrence !== 'none') {
       const advance = (value) => {
         if (!value) return null;
