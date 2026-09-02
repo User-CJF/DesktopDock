@@ -103,7 +103,7 @@ The palette is restrained: cool translucent surfaces, one blue interaction accen
 
 The Electron window is positioned against the active display's right work-area edge and fills the height above the taskbar. Production width is approximately 41% of the work area, clamped to 460–560px. The search rail is 38px high. Below it, cards sit in a single scrolling region with 4px gaps.
 
-At 460–519px, the dashboard uses two columns at 58/42. At 520–560px it uses three columns at 35/34/31. Card order and column placement are stored per mode, and user categories are added to the same wall without automatic classification.
+At 460–519px, the dashboard starts from a 58/42 two-zone composition. At 520–560px it starts from three equal logical zones. A dense 10/12-track grid lets cards snap across multiple tracks while a continuous height is stored per mode; neighboring cards automatically reflow. Card order, zone placement, and custom size are stored per mode, and user categories are added to the same wall without automatic classification.
 
 ## Elevation & Depth
 

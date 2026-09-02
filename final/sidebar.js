@@ -15,7 +15,7 @@ const ICONS = Object.freeze({
   refresh: '&#xE72C;', check: '&#xE73E;', calendar: '&#xE787;', attach: '&#xE723;', play: '&#xE768;', pause: '&#xE769;',
   previous: '&#xE892;', next: '&#xE893;', volume: '&#xE767;', search: '&#xE721;', open: '&#xE8A7;', reveal: '&#xE838;',
   sun: '&#xE706;', cloud: '&#xE753;', rain: '&#xE9C4;', settings: '&#xE713;', close: '&#xE711;', clock: '&#xE823;',
-  note: '&#xE70B;', todo: '&#xE73E;', collapse: '&#xE70D;', expand: '&#xE70E;', up: '&#xE74A;', down: '&#xE74B;', web: '&#xE774;'
+  note: '&#xE70B;', todo: '&#xE73E;', collapse: '&#xE70D;', expand: '&#xE70E;', up: '&#xE74A;', down: '&#xE74B;', web: '&#xE774;', resize: '&#xE740;'
 });
 const COLORS = ['#1677ff', '#00a870', '#d97706', '#d84a4a', '#7c5ce7', '#168aad', '#697386', '#c2417d'];
 const TODO_COLORS = ['blue', 'green', 'amber', 'red', 'purple', 'teal', 'slate', 'pink'];
@@ -43,6 +43,10 @@ function normalizeCards(value) {
       compact: value?.placements?.compact && typeof value.placements.compact === 'object' ? value.placements.compact : {},
       wide: value?.placements?.wide && typeof value.placements.wide === 'object' ? value.placements.wide : {},
     },
+    dimensions: {
+      compact: value?.dimensions?.compact && typeof value.dimensions.compact === 'object' ? value.dimensions.compact : {},
+      wide: value?.dimensions?.wide && typeof value.dimensions.wide === 'object' ? value.dimensions.wide : {},
+    },
   };
 }
 function writeStore(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
@@ -54,6 +58,7 @@ const formatSize = (bytes = 0) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 
 const cardIdForCategory = (id) => `category:${id}`;
 const isCollapsed = (id) => state.cards.collapsed.includes(id);
 const isHidden = (id) => state.cards.hidden.includes(id);
+const shortcutIconSources = new Map();
 
 let toastTimer;
 let dialogOpener = null;
@@ -81,7 +86,7 @@ function card(id, title, glyph, body, actions = '', extra = '') {
   if (isHidden(id)) return '';
   const size = state.cards.sizes[id] || 'normal';
   const categoryAttribute = id === 'warehouse' ? ' data-category-card=""' : id.startsWith('category:') ? ` data-category-card="${esc(id.slice(9))}"` : '';
-  return `<article class="bento-card size-${esc(size)} ${isCollapsed(id) ? 'is-collapsed' : ''} ${extra}" data-card-id="${esc(id)}"${categoryAttribute}>${cardHeader(id, title, glyph, actions)}<div class="card-body">${body}</div></article>`;
+  return `<article class="bento-card size-${esc(size)} ${isCollapsed(id) ? 'is-collapsed' : ''} ${extra}" data-card-id="${esc(id)}"${categoryAttribute}>${cardHeader(id, title, glyph, actions)}<div class="card-body">${body}</div>${!isCollapsed(id) ? `<button class="card-resize-handle" data-card-resize="${esc(id)}" aria-label="拖动调整${esc(title)}大小" title="拖动调整大小">${icon(ICONS.resize)}</button>` : ''}</article>`;
 }
 
 function weatherGlyph(code) { return Number(code) >= 51 ? ICONS.rain : Number(code) >= 2 ? ICONS.cloud : ICONS.sun; }
@@ -133,7 +138,8 @@ function notesCard() {
 }
 
 function shortcutTile(item) {
-  return `<div class="shortcut-tile" draggable="true" tabindex="0" data-shortcut="${esc(item.id)}" title="双击打开 ${esc(item.name)}"><span class="shortcut-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span><span class="shortcut-name">${esc(item.name)}</span><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`;
+  const source = shortcutIconSources.get(item.id);
+  return `<div class="shortcut-tile" draggable="true" tabindex="0" data-shortcut="${esc(item.id)}" title="双击打开 ${esc(item.name)}"><span class="shortcut-icon" data-shortcut-icon="${esc(item.id)}">${source ? `<img alt="" src="${source}">` : icon(ICONS.folder)}</span><span class="shortcut-name">${esc(item.name)}</span><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`;
 }
 function shortcutsCard(category = null) {
   const id = category ? cardIdForCategory(category.id) : 'warehouse';
@@ -152,7 +158,7 @@ function shortcutManagerDialog(categoryId = '') {
   const rows = items.map((item) => `<div class="manager-row"><span class="manager-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span><span class="manager-copy"><b>${esc(item.name)}</b><small>${item.location === 'public' ? '公共桌面' : item.location === 'desktop' ? '当前桌面' : '已收纳'}</small></span><select data-action="assign-select" data-shortcut-id="${esc(item.id)}" data-manager-category="${esc(categoryId)}" aria-label="为 ${esc(item.name)} 选择分类">${categoryOptions.replace(`value="${esc(item.categoryId || '')}"`, `value="${esc(item.categoryId || '')}" selected`)}</select><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`).join('');
   const body = `<div class="manager-toolbar"><span class="manager-summary">共 ${items.length} 个快捷方式。选择分类后立即保存，也可以拖回桌面仓。</span><button data-action="new-category-from-manager">${icon(ICONS.add)} 新建分类</button></div><div class="manager-list">${rows || '<div class="empty-state">这个区域还没有快捷方式</div>'}</div>`;
   openDialog('管理全部快捷方式', '完整显示当前区域的快捷方式，并可逐项分配分类。', body, '<button data-action="close-dialog">完成</button>');
-  void loadShortcutIcons();
+  void hydrateShortcutIcons();
 }
 
 function categoryPanelDialog(categoryId = '') {
@@ -164,7 +170,7 @@ function categoryPanelDialog(categoryId = '') {
   const manageAction = `<button data-action="manage-category" data-category-id="${esc(categoryId)}">${icon(ICONS.settings)} 管理全部</button>`;
   const editAction = category ? `<button data-action="edit-category" data-category-id="${esc(category.id)}">${icon(ICONS.edit)} 编辑分类</button>` : '';
   openDialog(title, `${items.length} 个快捷方式，点击图标即可启动。`, `<div class="category-launcher"><div class="category-launcher-grid">${grid}</div></div>`, `${addAction}${manageAction}${editAction}<button data-action="close-dialog">关闭</button>`, 'category-dialog');
-  void loadShortcutIcons();
+  void hydrateShortcutIcons();
 }
 
 function filesCard() {
@@ -246,10 +252,45 @@ function placeCard(cardId, targetId = null, columnNumber = null) {
   }
   persistColumns(mode, columns);
 }
+function gridDefinition(mode) {
+  return mode === 'wide'
+    ? { tracks: 12, starts: [1, 5, 9], spans: [4, 4, 4] }
+    : { tracks: 10, starts: [1, 7], spans: [6, 4] };
+}
+function logicalColumnAt(clientX, dashboard) {
+  const count = dashboard.classList.contains('columns-3') ? 3 : 2;
+  const rect = dashboard.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(0.999, (clientX - rect.left) / Math.max(1, rect.width)));
+  return Math.floor(ratio * count);
+}
+function layoutGridRows() {
+  const dashboard = content.querySelector('.bento-dashboard');
+  if (!dashboard) return;
+  const styles = getComputedStyle(dashboard);
+  const row = Number.parseFloat(styles.gridAutoRows) || 8;
+  const gap = Number.parseFloat(styles.rowGap) || 4;
+  dashboard.querySelectorAll('.bento-slot').forEach((slot) => {
+    const customHeight = Number(slot.dataset.cardHeight) || 0;
+    const card = slot.querySelector('.bento-card');
+    slot.style.height = customHeight ? `${customHeight}px` : 'auto';
+    const height = customHeight || Math.max(42, card?.scrollHeight || card?.getBoundingClientRect().height || 42);
+    slot.style.gridRowEnd = `span ${Math.max(1, Math.ceil((height + gap) / (row + gap)))}`;
+  });
+}
 function renderDashboard() {
-  const { columns } = arrangeDashboard();
-  content.innerHTML = `<div class="bento-dashboard columns-${columns.length}">${columns.map((items, index) => `<div class="bento-column" data-column="${index}">${items.map((entry) => entry.html()).join('')}</div>`).join('')}</div>`;
-  hydrateShortcutIcons();
+  const { mode, columns } = arrangeDashboard();
+  const grid = gridDefinition(mode);
+  const dimensions = state.cards.dimensions[mode];
+  const slots = columns.flatMap((items, column) => items.map((entry) => {
+    const saved = dimensions[entry.id] || {};
+    const span = Math.max(3, Math.min(grid.tracks, Number(saved.span) || grid.spans[column]));
+    const start = Math.max(1, Math.min(grid.tracks - span + 1, grid.starts[column]));
+    const height = Math.max(0, Number(saved.height) || 0);
+    return `<div class="bento-slot ${height ? 'is-custom-size' : ''}" data-slot-id="${esc(entry.id)}" data-grid-start="${start}" data-card-height="${height}" style="--card-start:${start};--card-span:${span}">${entry.html()}</div>`;
+  })).join('');
+  content.innerHTML = `<div class="bento-dashboard columns-${columns.length}" data-grid-tracks="${grid.tracks}">${slots}<div class="column-drop-indicator" aria-hidden="true"></div></div>`;
+  requestAnimationFrame(layoutGridRows);
+  void hydrateShortcutIcons().then(layoutGridRows);
 }
 
 function renderSearch() {
@@ -275,7 +316,9 @@ function render() {
 async function hydrateShortcutIcons() {
   if (!api?.desktop?.shortcutIcon) return;
   await Promise.all([...document.querySelectorAll('[data-shortcut-icon]')].map(async (node) => {
-    const source = await api.desktop.shortcutIcon(node.dataset.shortcutIcon).catch(() => null);
+    const id = node.dataset.shortcutIcon;
+    const source = shortcutIconSources.get(id) || await api.desktop.shortcutIcon(id).catch(() => null);
+    if (source) shortcutIconSources.set(id, source);
     if (source && node.isConnected) node.innerHTML = `<img alt="" src="${source}">`;
   }));
 }
@@ -321,8 +364,10 @@ function cardMenu(cardId) {
   const currentSize = state.cards.sizes[cardId] || 'normal';
   const resizeAction = ['todo', 'notes', 'files', 'warehouse'].includes(cardId) || cardId.startsWith('category:')
     ? `<button data-action="card-resize" data-card-id="${esc(cardId)}">${icon(ICONS.expand)}切换尺寸（当前：${esc({ compact: '紧凑', normal: '标准', tall: '加高' }[currentSize])}）</button>` : '';
+  const customSizeAction = state.cards.dimensions[dashboardMode()][cardId]
+    ? `<button data-action="reset-card-size" data-card-id="${esc(cardId)}">${icon(ICONS.resize)}恢复自动大小</button>` : '';
   const moduleAction = cardId === 'todo' ? `<button data-action="manage-todos">${icon(ICONS.todo)}管理全部待办</button>` : '';
-  openDialog(`管理“${title || '卡片'}”`, '拖动标题栏可排序，也可以使用下面的无障碍操作。', `<div class="action-list">${moduleAction}<button data-action="card-move" data-card-id="${esc(cardId)}" data-direction="-1">${icon(ICONS.up)}向前移动</button><button data-action="card-move" data-card-id="${esc(cardId)}" data-direction="1">${icon(ICONS.down)}向后移动</button>${resizeAction}<button data-action="card-hide" data-card-id="${esc(cardId)}">${icon(ICONS.close)}隐藏卡片</button>${cardId.startsWith('category:') ? `<button class="danger" data-action="delete-category" data-category-id="${esc(cardId.slice(9))}">${icon(ICONS.trash)}删除分类</button>` : ''}</div>`, '<button data-action="close-dialog">关闭</button>');
+  openDialog(`管理“${title || '卡片'}”`, '拖动标题栏可排序，拖动右下角可自由调整宽高。', `<div class="action-list">${moduleAction}<button data-action="card-move" data-card-id="${esc(cardId)}" data-direction="-1">${icon(ICONS.up)}向前移动</button><button data-action="card-move" data-card-id="${esc(cardId)}" data-direction="1">${icon(ICONS.down)}向后移动</button>${resizeAction}${customSizeAction}<button data-action="card-hide" data-card-id="${esc(cardId)}">${icon(ICONS.close)}隐藏卡片</button>${cardId.startsWith('category:') ? `<button class="danger" data-action="delete-category" data-category-id="${esc(cardId.slice(9))}">${icon(ICONS.trash)}删除分类</button>` : ''}</div>`, '<button data-action="close-dialog">关闭</button>');
 }
 function settingsDialog() {
   const allIds = [...DEFAULT_ORDER, ...state.board.categories.map((entry) => cardIdForCategory(entry.id))];
@@ -343,7 +388,8 @@ async function handleAction(button) {
   if (action === 'card-toggle') { const id = button.dataset.cardId; state.cards.collapsed = isCollapsed(id) ? state.cards.collapsed.filter((value) => value !== id) : [...state.cards.collapsed, id]; writeStore('desktopdock.cards', state.cards); return render(); }
   if (action === 'card-menu') return cardMenu(button.dataset.cardId);
   if (action === 'card-move') { moveCardByDirection(button.dataset.cardId, Number(button.dataset.direction)); closeDialog(); return render(); }
-  if (action === 'card-resize') { const id = button.dataset.cardId; const sizes = ['compact', 'normal', 'tall']; const current = state.cards.sizes[id] || 'normal'; state.cards.sizes[id] = sizes[(sizes.indexOf(current) + 1) % sizes.length]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
+  if (action === 'card-resize') { const id = button.dataset.cardId; const sizes = ['compact', 'normal', 'tall']; const current = state.cards.sizes[id] || 'normal'; state.cards.sizes[id] = sizes[(sizes.indexOf(current) + 1) % sizes.length]; delete state.cards.dimensions[dashboardMode()][id]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
+  if (action === 'reset-card-size') { delete state.cards.dimensions[dashboardMode()][button.dataset.cardId]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
   if (action === 'card-hide') { state.cards.hidden = [...new Set([...state.cards.hidden, button.dataset.cardId])]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
   if (action === 'toggle-card-visible') { const id = button.dataset.cardId; state.cards.hidden = isHidden(id) ? state.cards.hidden.filter((value) => value !== id) : [...state.cards.hidden, id]; writeStore('desktopdock.cards', state.cards); settingsDialog(); render(); return; }
   if (action === 'stow-shortcuts') { closeDialog(); return stowDesktopShortcuts(); }
@@ -384,13 +430,13 @@ async function handleAction(button) {
   if (action === 'quit') return api?.window?.quit?.();
 }
 
-document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); const categoryCard = event.target.closest('[data-category-card]'); if (categoryCard && !event.target.closest('button, select, input, textarea, [data-shortcut]')) void categoryPanelDialog(categoryCard.dataset.categoryCard || ''); });
+document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); const launcherShortcut = event.target.closest('.category-dialog [data-shortcut]'); if (launcherShortcut && !button) void api?.desktop?.launchShortcut?.(launcherShortcut.dataset.shortcut).then(() => showToast(`已启动 ${launcherShortcut.querySelector('.shortcut-name')?.textContent || '应用'}`)); const categoryCard = event.target.closest('[data-category-card]'); if (categoryCard && !event.target.closest('button, select, input, textarea, [data-shortcut]')) void categoryPanelDialog(categoryCard.dataset.categoryCard || ''); });
 document.addEventListener('change', (event) => { const control = event.target.closest('[data-action]'); if (control) void handleAction(control); });
 search.addEventListener('input', () => { state.query = search.value.trim().toLocaleLowerCase('zh-CN'); renderSearch(); });
 search.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); searchResults.querySelector('button')?.focus(); } if (event.key === 'Escape') { search.value = ''; state.query = ''; renderSearch(); } });
 searchResults.addEventListener('keydown', (event) => { const buttons = [...searchResults.querySelectorAll('button')]; const index = buttons.indexOf(document.activeElement); if (event.key === 'ArrowDown') { event.preventDefault(); buttons[Math.min(buttons.length - 1, index + 1)]?.focus(); } if (event.key === 'ArrowUp') { event.preventDefault(); index <= 0 ? search.focus() : buttons[index - 1]?.focus(); } if (event.key === 'Escape') search.focus(); });
 searchResults.addEventListener('click', (event) => { const row = event.target.closest('[data-search-kind]'); if (!row) return; const actions = { shortcut: () => api?.desktop?.launchShortcut?.(row.dataset.id), app: () => api?.apps?.launch?.(row.dataset.id), file: () => api?.files?.open?.(row.dataset.id), web: () => api?.search?.web?.(row.dataset.query) }; void actions[row.dataset.searchKind]?.(); search.value = ''; state.query = ''; renderSearch(); showToast('已打开'); });
-document.addEventListener('dblclick', (event) => { const tile = event.target.closest('[data-shortcut]'); if (tile) void api?.desktop?.launchShortcut?.(tile.dataset.shortcut).then(() => showToast(`已启动 ${tile.querySelector('.shortcut-name')?.textContent || '应用'}`)); });
+document.addEventListener('dblclick', (event) => { const tile = event.target.closest('[data-shortcut]'); if (tile && !tile.closest('.category-dialog')) void api?.desktop?.launchShortcut?.(tile.dataset.shortcut).then(() => showToast(`已启动 ${tile.querySelector('.shortcut-name')?.textContent || '应用'}`)); });
 document.addEventListener('keydown', (event) => {
   if (!dialogLayer.hidden) {
     if (event.key === 'Escape') { event.preventDefault(); closeDialog(); return; }
@@ -404,19 +450,54 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key === 'Enter' && event.target.matches('[data-shortcut]')) void api?.desktop?.launchShortcut?.(event.target.dataset.shortcut);
 });
-document.addEventListener('dragstart', (event) => { const shortcut = event.target.closest('[data-shortcut]'); const header = event.target.closest('[data-card-drag]'); if (shortcut) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-shortcut', shortcut.dataset.shortcut); shortcut.classList.add('dragging'); } else if (header) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-card', header.dataset.cardDrag); header.closest('.bento-card')?.classList.add('dragging'); } });
-document.addEventListener('dragend', () => document.querySelectorAll('.dragging,.drop-active').forEach((node) => node.classList.remove('dragging', 'drop-active')));
-document.addEventListener('dragover', (event) => { const target = event.target.closest('[data-drop-category],[data-card-id],.bento-column,#dockContent'); if (!target) return; event.preventDefault(); target.classList.add('drop-active'); });
+document.addEventListener('pointerdown', (event) => {
+  const handle = event.target.closest('[data-card-resize]');
+  if (!handle || event.button !== 0) return;
+  const slot = handle.closest('.bento-slot');
+  const dashboard = handle.closest('.bento-dashboard');
+  if (!slot || !dashboard) return;
+  event.preventDefault(); event.stopPropagation();
+  const mode = dashboardMode();
+  const grid = gridDefinition(mode);
+  const rect = slot.getBoundingClientRect();
+  const dashboardRect = dashboard.getBoundingClientRect();
+  const gap = Number.parseFloat(getComputedStyle(dashboard).columnGap) || 4;
+  const unit = (dashboardRect.width - gap * (grid.tracks - 1)) / grid.tracks;
+  const cardId = handle.dataset.cardResize;
+  const start = Number(slot.dataset.gridStart) || 1;
+  document.body.classList.add('is-card-resizing');
+  try { handle.setPointerCapture(event.pointerId); } catch { /* Document listeners still preserve resizing. */ }
+  const move = (moveEvent) => {
+    const width = Math.max(unit * 3, rect.width + moveEvent.clientX - event.clientX);
+    const span = Math.max(3, Math.min(grid.tracks, Math.round((width + gap) / (unit + gap))));
+    const nextStart = Math.max(1, Math.min(start, grid.tracks - span + 1));
+    const maxHeight = Math.max(180, content.clientHeight - 8);
+    const height = Math.round(Math.max(72, Math.min(maxHeight, rect.height + moveEvent.clientY - event.clientY)));
+    state.cards.dimensions[mode][cardId] = { span, height };
+    slot.dataset.cardHeight = String(height); slot.dataset.gridStart = String(nextStart);
+    slot.classList.add('is-custom-size');
+    slot.style.setProperty('--card-start', nextStart); slot.style.setProperty('--card-span', span);
+    layoutGridRows();
+  };
+  const finish = () => {
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', finish); document.removeEventListener('pointercancel', finish);
+    document.body.classList.remove('is-card-resizing'); writeStore('desktopdock.cards', state.cards); render();
+  };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', finish); document.addEventListener('pointercancel', finish);
+});
+document.addEventListener('dragstart', (event) => { const shortcut = event.target.closest('[data-shortcut]'); const header = event.target.closest('[data-card-drag]'); if (shortcut) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-shortcut', shortcut.dataset.shortcut); shortcut.classList.add('dragging'); } else if (header) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-desktopdock-card', header.dataset.cardDrag); header.closest('.bento-card')?.classList.add('dragging'); document.body.classList.add('is-card-dragging'); } });
+document.addEventListener('dragend', () => { document.querySelectorAll('.dragging,.drop-active').forEach((node) => node.classList.remove('dragging', 'drop-active')); document.body.classList.remove('is-card-dragging'); document.querySelectorAll('.bento-dashboard').forEach((node) => { node.style.removeProperty('--drop-left'); node.style.removeProperty('--drop-width'); }); });
+document.addEventListener('dragover', (event) => { const target = event.target.closest('[data-drop-category],[data-card-id],.bento-dashboard,#dockContent'); if (!target) return; event.preventDefault(); target.classList.add('drop-active'); const dashboard = event.target.closest('.bento-dashboard'); const cardId = event.dataTransfer.getData('application/x-desktopdock-card'); if (dashboard && cardId) { const count = dashboard.classList.contains('columns-3') ? 3 : 2; const column = logicalColumnAt(event.clientX, dashboard); dashboard.style.setProperty('--drop-left', `${column * 100 / count}%`); dashboard.style.setProperty('--drop-width', `${100 / count}%`); } });
 document.addEventListener('dragleave', (event) => event.target.closest('.drop-active')?.classList.remove('drop-active'));
 document.addEventListener('drop', async (event) => {
-  const category = event.target.closest('[data-drop-category]'); const cardTarget = event.target.closest('[data-card-id]'); const columnTarget = event.target.closest('.bento-column'); const board = event.target.closest('#dockContent');
-  if (!category && !cardTarget && !columnTarget && !board) return; event.preventDefault(); document.querySelectorAll('.drop-active').forEach((node) => node.classList.remove('drop-active'));
+  const category = event.target.closest('[data-drop-category]'); const cardTarget = event.target.closest('[data-card-id]'); const dashboard = event.target.closest('.bento-dashboard'); const board = event.target.closest('#dockContent');
+  if (!category && !cardTarget && !dashboard && !board) return; event.preventDefault(); document.querySelectorAll('.drop-active').forEach((node) => node.classList.remove('drop-active'));
   const shortcutId = event.dataTransfer.getData('application/x-desktopdock-shortcut');
   if (category && shortcutId) return assignShortcut(shortcutId, category.dataset.dropCategory || null);
   if (board && shortcutId && !category && !cardTarget) return categoryDialog(null, shortcutId);
   if (category && event.dataTransfer.types.includes('Files')) { const paths = await droppedPaths(event); const result = await api?.board?.import?.(paths, category.dataset.dropCategory || null); if (!resultOk(result)) return showToast(result.error || '导入失败', 'error'); await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式`); }
   const cardId = event.dataTransfer.getData('application/x-desktopdock-card'); const targetId = cardTarget?.dataset.cardId;
-  if (cardId && cardId !== targetId) { placeCard(cardId, targetId || null, columnTarget?.dataset.column); render(); showToast('卡片位置已更新'); }
+  if (cardId && cardId !== targetId) { const column = dashboard ? logicalColumnAt(event.clientX, dashboard) : null; placeCard(cardId, targetId || null, column); render(); showToast('卡片位置已更新'); }
 });
 
 document.addEventListener('contextmenu', (event) => {

@@ -299,6 +299,8 @@ async function runSidebarSmokeTest(window) {
       const searchView = Boolean(document.querySelector('.search-result-list'));
       searchInput.value = '';
       searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      const dashboard = document.querySelector('.bento-dashboard');
+      const contentArea = document.querySelector('#dockContent');
       return {
         loaded,
         bridge: window.desktopDock?.isElectron === true,
@@ -315,12 +317,37 @@ async function runSidebarSmokeTest(window) {
         widgetsView: Boolean(document.querySelector('.media-card') && document.querySelector('.weather-card')),
         notesView: Boolean(document.querySelector('.notes-card')),
         compactCards: [...document.querySelectorAll('.bento-card')].every((card) => card.getBoundingClientRect().width > 0),
+        middleDropSurface: Boolean(dashboard && dashboard.getBoundingClientRect().height >= (contentArea?.clientHeight || 0) - 8),
+        cardResizeHandles: [...document.querySelectorAll('.bento-card:not(.is-collapsed)')].every((card) => card.querySelector('[data-card-resize]')),
         searchView,
         settingsView,
         categoryEditor,
         rootsBridge: Array.isArray(roots),
       };
     })()`);
+    const resizeHandle = await window.webContents.executeJavaScript(`(() => {
+      const node = document.querySelector('.clock-card [data-card-resize]') || document.querySelector('[data-card-resize]');
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2), id: node.dataset.cardResize };
+    })()`);
+    if (resizeHandle) {
+      window.show(); window.focus();
+      window.webContents.sendInputEvent({ type: 'mouseDown', x: resizeHandle.x, y: resizeHandle.y, button: 'left', clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      result.resizePointerDown = await window.webContents.executeJavaScript("document.body.classList.contains('is-card-resizing')");
+      await window.webContents.executeJavaScript(`document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, buttons: 1, clientX: ${resizeHandle.x + 42}, clientY: ${resizeHandle.y + 36} }))`);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      await window.webContents.executeJavaScript(`document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: ${resizeHandle.x + 42}, clientY: ${resizeHandle.y + 36} }))`);
+      window.webContents.sendInputEvent({ type: 'mouseUp', x: resizeHandle.x + 42, y: resizeHandle.y + 36, button: 'left', clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      result.cardResizeInteraction = await window.webContents.executeJavaScript(`(() => {
+        const value = JSON.parse(localStorage.getItem('desktopdock.cards') || '{}');
+        const mode = window.innerWidth >= 520 ? 'wide' : 'compact';
+        const size = value.dimensions?.[mode]?.[${JSON.stringify(resizeHandle.id)}];
+        return Number(size?.span) >= 3 && Number(size?.height) >= 72;
+      })()`);
+    } else result.cardResizeInteraction = false;
     window.setBounds({ ...window.getBounds(), width: 460 });
     await window.webContents.executeJavaScript("document.documentElement.dataset.theme='dark'; window.dispatchEvent(new Event('resize'))");
     await new Promise((resolve) => setTimeout(resolve, 220));

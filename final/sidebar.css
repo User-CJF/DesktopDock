@@ -97,10 +97,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .top-action:hover { background: var(--card-hover); }
 
 .dock-content { min-height: 0; padding-top: var(--gap); overflow-x: hidden; overflow-y: auto; }
-.bento-dashboard { display: grid; min-width: 0; align-items: start; gap: var(--gap); }
-.bento-dashboard.columns-3 { grid-template-columns: minmax(0, 35fr) minmax(0, 34fr) minmax(0, 31fr); }
-.bento-dashboard.columns-2 { grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); }
-.bento-column { display: flex; min-width: 0; flex-direction: column; gap: var(--gap); }
+.bento-dashboard { position: relative; display: grid; min-width: 0; min-height: calc(100vh - 50px); grid-template-columns: repeat(var(--grid-tracks), minmax(0, 1fr)); grid-auto-flow: dense; grid-auto-rows: 8px; align-items: start; gap: var(--gap); }
+.bento-dashboard.columns-3 { --grid-tracks: 12; }
+.bento-dashboard.columns-2 { --grid-tracks: 10; }
+.bento-slot { position: relative; min-width: 0; grid-column: var(--card-start) / span var(--card-span); }
+.bento-slot > .bento-card { display: flex; height: 100%; min-height: 42px; flex-direction: column; }
+.bento-slot.is-custom-size .card-body { max-height: none; overflow-y: auto; }
+.column-drop-indicator { position: absolute; z-index: 12; top: 0; bottom: 0; left: var(--drop-left, 0); display: none; width: var(--drop-width, 0); border: 1px dashed var(--accent); border-radius: var(--radius); background: color-mix(in srgb, var(--accent-soft) 24%, transparent); pointer-events: none; }
+.is-card-dragging .bento-dashboard .column-drop-indicator { display: block; }
 
 .bento-card {
   min-width: 0;
@@ -116,7 +120,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .bento-card:hover { border-color: var(--line-strong); }
 .bento-card.dragging { opacity: .48; }
 .bento-card.drop-active, [data-drop-category].drop-active { border-color: var(--accent); background-color: color-mix(in srgb, var(--accent-soft) 55%, var(--card)); }
-.bento-column.drop-active { outline: 1px dashed var(--accent); outline-offset: -2px; }
+.is-card-resizing { cursor: nwse-resize; user-select: none; }
 .bento-card.is-collapsed .card-body { display: none; }
 .card-header { display: flex; height: 31px; align-items: center; justify-content: space-between; gap: 4px; padding: 0 3px 0 8px; border-bottom: 1px solid var(--line); }
 .is-collapsed .card-header { border-bottom: 0; }
@@ -126,7 +130,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .card-actions { display: flex; flex: 0 0 auto; align-items: center; }
 .card-actions button { display: grid; width: 26px; height: 26px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: var(--text-2); background: transparent; font-size: 11px; }
 .card-actions button:hover { color: var(--text); background: var(--card-hover); }
-.card-body { min-width: 0; padding: 7px; }
+.card-body { min-width: 0; min-height: 0; padding: 7px; }
+.card-resize-handle { position: absolute; z-index: 4; right: 1px; bottom: 1px; display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 0; border-radius: 3px 0 4px; opacity: .28; color: var(--text-2); background: color-mix(in srgb, var(--card-strong) 82%, transparent); cursor: nwse-resize; touch-action: none; }
+.bento-card:hover .card-resize-handle, .card-resize-handle:focus-visible { opacity: 1; }
 .size-compact .card-body { max-height: 154px; overflow-y: auto; }
 .size-normal .card-body { max-height: 360px; overflow-y: auto; }
 .size-tall .card-body { max-height: 680px; overflow-y: auto; }
@@ -314,11 +320,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .dock-state { display: none; }
   .card-body { padding: 6px; }
   .shortcut-grid { grid-template-columns: repeat(auto-fit, minmax(45px, 1fr)); }
-  .bento-column:nth-child(2) .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bento-slot:nth-child(even) .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .form-pair { grid-template-columns: 1fr; }
 }
 @media (min-width: 520px) {
-  .bento-column:nth-child(3) .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bento-slot .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
