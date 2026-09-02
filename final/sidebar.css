@@ -269,6 +269,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .todo-manager-row button { height: 28px; padding: 0 4px; border: 0; border-radius: 3px; background: transparent; font-size: 10px; }
 .todo-manager-row button:hover { background: var(--card-hover); }
 .todo-manager-row button:disabled { opacity: .35; }
+.manager-summary { margin-bottom: 7px; color: var(--text-3); font-size: 10px; line-height: 1.45; }
+.manager-list { display: flex; flex-direction: column; gap: 4px; }
+.manager-row { display: grid; min-height: 42px; grid-template-columns: 30px minmax(0, 1fr) minmax(92px, 118px) 28px; align-items: center; gap: 6px; padding: 4px 5px; border: 1px solid var(--line); border-radius: 4px; }
+.manager-row:hover, .manager-row:focus-within { border-color: var(--line-strong); background: var(--card-hover); }
+.manager-icon { display: grid; width: 30px; height: 30px; place-items: center; }
+.manager-icon img { width: 28px; height: 28px; object-fit: contain; }
+.manager-copy { display: flex; min-width: 0; flex-direction: column; }
+.manager-copy b, .manager-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manager-copy b { font-size: 10px; }
+.manager-copy small { margin-top: 2px; color: var(--text-3); font-size: 9px; }
+.manager-row select { min-width: 0; height: 28px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; color: var(--text); background: var(--card); font-size: 10px; }
+.manager-row > button { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 3px; background: transparent; }
+.manager-row > button:hover { background: var(--card-hover); }
 .action-list button, .move-list button { display: flex; min-height: 36px; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid transparent; border-radius: 4px; background: transparent; text-align: left; }
 .action-list button:hover, .move-list button:hover { border-color: var(--line); background: var(--card-hover); }
 .move-list i { width: 8px; height: 8px; border-radius: 50%; background: var(--swatch); }

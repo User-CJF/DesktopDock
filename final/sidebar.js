@@ -144,6 +144,15 @@ function shortcutsCard(category = null) {
   return card(id, title, category ? ICONS.folder : ICONS.warehouse, body, actions, 'apps-card');
 }
 
+function shortcutManagerDialog(categoryId = '') {
+  const items = state.board.shortcuts.filter((item) => (item.categoryId || '') === categoryId);
+  const categoryOptions = [`<option value="">桌面仓</option>`, ...state.board.categories.map((entry) => `<option value="${esc(entry.id)}">${esc(entry.name)}</option>`)].join('');
+  const rows = items.map((item) => `<div class="manager-row"><span class="manager-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span><span class="manager-copy"><b>${esc(item.name)}</b><small>${item.location === 'public' ? '公共桌面' : item.location === 'desktop' ? '当前桌面' : '已收纳'}</small></span><select data-action="assign-select" data-shortcut-id="${esc(item.id)}" data-manager-category="${esc(categoryId)}" aria-label="为 ${esc(item.name)} 选择分类">${categoryOptions.replace(`value="${esc(item.categoryId || '')}"`, `value="${esc(item.categoryId || '')}" selected`)}</select><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`).join('');
+  const body = `<div class="manager-summary">共 ${items.length} 个快捷方式。选择分类后立即保存，也可以拖回桌面仓。</div><div class="manager-list">${rows || '<div class="empty-state">这个区域还没有快捷方式</div>'}</div>`;
+  openDialog('管理全部快捷方式', '完整显示当前区域的快捷方式，并可逐项分配分类。', body, '<button data-action="close-dialog">完成</button>');
+  void loadShortcutIcons();
+}
+
 function filesCard() {
   const roots = state.roots.slice(0, 5);
   const fileSize = state.cards.sizes.files || 'normal';
@@ -304,10 +313,11 @@ function cardMenu(cardId) {
 function settingsDialog() {
   const allIds = [...DEFAULT_ORDER, ...state.board.categories.map((entry) => cardIdForCategory(entry.id))];
   const name = (id) => id.startsWith('category:') ? state.board.categories.find((entry) => cardIdForCategory(entry.id) === id)?.name : ({ weather: '天气', todo: '待办', notes: '随记', files: '文件', clock: '时间', media: '媒体', warehouse: '桌面仓' })[id];
-  openDialog('面板设置', '主题、开机启动和卡片可见性。', `<div class="setting-list"><div class="setting-row"><span><b>主题</b><small>浅色、深色或跟随系统</small></span><button data-action="cycle-theme">${esc({ light: '浅色', dark: '深色', system: '跟随系统' }[state.settings.theme])}</button></div><div class="setting-row"><span><b>开机自动启动</b><small>便携 EXE 随 Windows 启动</small></span><button class="switch ${state.settings.autoStart ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStart)}" data-action="toggle-setting" data-setting="autoStart"><i></i></button></div><div class="setting-row"><span><b>自动收纳快捷方式</b><small>仅移动当前用户桌面快捷方式</small></span><button class="switch ${state.settings.autoStowShortcuts ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStowShortcuts)}" data-action="toggle-setting" data-setting="autoStowShortcuts"><i></i></button></div><h3>卡片显示</h3>${allIds.map((id) => `<div class="setting-row"><span><b>${esc(name(id) || id)}</b></span><button class="switch ${!isHidden(id) ? 'on' : ''}" role="switch" aria-checked="${!isHidden(id)}" data-action="toggle-card-visible" data-card-id="${esc(id)}"><i></i></button></div>`).join('')}</div>`, '<button data-action="export-settings">导出配置</button><button data-action="quit" class="danger">退出</button><button data-action="close-dialog">完成</button>');
+  openDialog('面板设置', '主题、开机启动和卡片可见性。', `<div class="setting-list"><div class="setting-row"><span><b>主题</b><small>浅色、深色或跟随系统</small></span><button data-action="cycle-theme">${esc({ light: '浅色', dark: '深色', system: '跟随系统' }[state.settings.theme])}</button></div><div class="setting-row"><span><b>开机自动启动</b><small>便携 EXE 随 Windows 启动</small></span><button class="switch ${state.settings.autoStart ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStart)}" data-action="toggle-setting" data-setting="autoStart"><i></i></button></div><div class="setting-row"><span><b>自动收纳快捷方式</b><small>启动时收纳当前用户与公共桌面的快捷方式</small></span><button class="switch ${state.settings.autoStowShortcuts ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStowShortcuts)}" data-action="toggle-setting" data-setting="autoStowShortcuts"><i></i></button></div><div class="setting-row"><span><b>桌面收纳</b><small>立即移除桌面上的快捷方式，只保留系统图标</small></span><button data-action="stow-shortcuts">立即收纳</button></div><h3>卡片显示</h3>${allIds.map((id) => `<div class="setting-row"><span><b>${esc(name(id) || id)}</b></span><button class="switch ${!isHidden(id) ? 'on' : ''}" role="switch" aria-checked="${!isHidden(id)}" data-action="toggle-card-visible" data-card-id="${esc(id)}"><i></i></button></div>`).join('')}</div>`, '<button data-action="export-settings">导出配置</button><button data-action="quit" class="danger">退出</button><button data-action="close-dialog">完成</button>');
 }
 async function saveSetting(key, value) { const previous = state.settings[key]; state.settings[key] = value; const result = await api?.settings?.set?.(key, value); if (!resultOk(result)) { state.settings[key] = previous; showToast(result.error || '设置保存失败', 'error'); } document.documentElement.dataset.theme = state.settings.theme; render(); }
 async function assignShortcut(shortcutId, categoryId) { const result = await api?.board?.assign?.(shortcutId, categoryId || null); if (!resultOk(result)) return showToast(result.error || '归类失败', 'error'); await loadBoard(); render(); showToast(categoryId ? '已移动到分类' : '已移回桌面仓'); }
+async function stowDesktopShortcuts() { const result = await api?.desktop?.stowShortcuts?.(); if (!resultOk(result)) return showToast(result?.error || `收纳完成 ${result?.stowed || 0} 个，${result?.failed?.length || 0} 个失败`, 'error'); await loadBoard(); render(); showToast(`已收纳 ${result?.stowed || 0} 个桌面快捷方式`); }
 async function droppedPaths(event) { return [...(event.dataTransfer?.files || [])].map((file) => { try { return api?.files?.pathForFile?.(file) || file.path || ''; } catch { return ''; } }).filter(Boolean); }
 
 async function handleAction(button) {
@@ -322,6 +332,7 @@ async function handleAction(button) {
   if (action === 'card-resize') { const id = button.dataset.cardId; const sizes = ['compact', 'normal', 'tall']; const current = state.cards.sizes[id] || 'normal'; state.cards.sizes[id] = sizes[(sizes.indexOf(current) + 1) % sizes.length]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
   if (action === 'card-hide') { state.cards.hidden = [...new Set([...state.cards.hidden, button.dataset.cardId])]; writeStore('desktopdock.cards', state.cards); closeDialog(); return render(); }
   if (action === 'toggle-card-visible') { const id = button.dataset.cardId; state.cards.hidden = isHidden(id) ? state.cards.hidden.filter((value) => value !== id) : [...state.cards.hidden, id]; writeStore('desktopdock.cards', state.cards); settingsDialog(); render(); return; }
+  if (action === 'stow-shortcuts') { closeDialog(); return stowDesktopShortcuts(); }
   if (action === 'new-category') return categoryDialog();
   if (action === 'edit-category') return categoryDialog(state.board.categories.find((item) => item.id === button.dataset.categoryId));
   if (action === 'save-category') { const form = dialog.querySelector('#categoryForm'); if (!form?.reportValidity()) return; const data = new FormData(form); const payload = { id: button.dataset.categoryId, name: data.get('name'), color: data.get('color') }; const result = payload.id ? await api?.board?.updateCategory?.(payload) : await api?.board?.createCategory?.(payload); if (!resultOk(result)) return showToast(result.error || '分类保存失败', 'error'); closeDialog(); await loadBoard(); render(); return showToast('分类已保存'); }
@@ -330,7 +341,8 @@ async function handleAction(button) {
   if (action === 'move-shortcut') return moveShortcutDialog(button.dataset.shortcutId);
   if (action === 'assign-shortcut') { closeDialog(); return assignShortcut(button.dataset.shortcutId, button.dataset.categoryId || null); }
   if (action === 'import-shortcuts') { const result = await api?.board?.pick?.(button.dataset.categoryId || null); if (result?.canceled) return; if (!resultOk(result)) return showToast(result?.error || '导入失败', 'error'); await loadBoard(); render(); return showToast(`已导入 ${result.imported?.length || 0} 个快捷方式`); }
-  if (action === 'manage-category') return showToast('可拖动图标归类，更多管理入口位于卡片标题栏');
+  if (action === 'manage-category') return shortcutManagerDialog(button.dataset.categoryId || '');
+  if (action === 'assign-select') { const result = await api?.board?.assign?.(button.dataset.shortcutId, button.value || null); if (!resultOk(result)) return showToast(result?.error || '归类失败', 'error'); await loadBoard(); render(); shortcutManagerDialog(button.dataset.managerCategory || ''); return showToast(button.value ? '已分配到分类' : '已移回桌面仓'); }
   if (action === 'new-todo') return todoDialog();
   if (action === 'manage-todos') return todoManagerDialog();
   if (action === 'edit-todo') return todoDialog(state.todos.find((item) => item.id === button.dataset.todoId));
@@ -358,6 +370,7 @@ async function handleAction(button) {
 }
 
 document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); });
+document.addEventListener('change', (event) => { const control = event.target.closest('[data-action]'); if (control) void handleAction(control); });
 search.addEventListener('input', () => { state.query = search.value.trim().toLocaleLowerCase('zh-CN'); renderSearch(); });
 search.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); searchResults.querySelector('button')?.focus(); } if (event.key === 'Escape') { search.value = ''; state.query = ''; renderSearch(); } });
 searchResults.addEventListener('keydown', (event) => { const buttons = [...searchResults.querySelectorAll('button')]; const index = buttons.indexOf(document.activeElement); if (event.key === 'ArrowDown') { event.preventDefault(); buttons[Math.min(buttons.length - 1, index + 1)]?.focus(); } if (event.key === 'ArrowUp') { event.preventDefault(); index <= 0 ? search.focus() : buttons[index - 1]?.focus(); } if (event.key === 'Escape') search.focus(); });

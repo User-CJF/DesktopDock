@@ -194,28 +194,41 @@ function createDesktopOrganizer(options) {
   }
 
   async function stowShortcuts() {
-    const items = await shortcutEntries(desktopDirectory, 'desktop', true, 'user');
-    if (!items.length) return { success: true, stowed: 0, movements: [] };
+    const sources = [
+      { directory: desktopDirectory, location: 'desktop', scope: 'user' },
+      ...additionalScanDirectories.map((directory) => ({ directory, location: 'public', scope: `public:${directory.toLowerCase()}` })),
+    ];
+    const sourceErrors = [];
+    const groups = await Promise.all(sources.map(async (source) => {
+      try {
+        return await shortcutEntries(source.directory, source.location, true, source.scope);
+      } catch (error) {
+        sourceErrors.push({ location: source.location, error: error.message });
+        return [];
+      }
+    }));
+    const items = groups.flat();
+    if (!items.length) return { success: sourceErrors.length === 0, stowed: 0, failed: sourceErrors, movements: [] };
     await fs.promises.mkdir(shortcutVaultDirectory, { recursive: true });
     const manifest = await readShortcutManifest();
     const reserved = new Set();
     const moved = [];
-    try {
-      for (const item of items) {
+    const failed = [...sourceErrors];
+    for (const item of items) {
+      try {
         const destination = await availableDestination(shortcutVaultDirectory, item.fileName, reserved);
         await moveFile(item.fullPath, destination);
         const movement = { originalPath: item.fullPath, newPath: destination, fileName: path.basename(destination) };
         moved.push(movement);
         manifest.items = manifest.items.filter((entry) => path.resolve(entry.newPath).toLowerCase() !== destination.toLowerCase());
         manifest.items.push({ ...movement, stowedAt: new Date().toISOString() });
+      } catch (error) {
+        failed.push({ name: item.fileName, location: item.location, error: error.message });
       }
-      await writeShortcutManifest(manifest);
-      await listShortcuts();
-      return { success: true, stowed: moved.length, movements: moved };
-    } catch (error) {
-      for (const item of moved.reverse()) await moveFile(item.newPath, item.originalPath).catch(() => {});
-      throw error;
     }
+    await writeShortcutManifest(manifest);
+    await listShortcuts();
+    return { success: failed.length === 0, stowed: moved.length, failed, movements: moved };
   }
 
   async function importShortcuts(sourcePaths = []) {
@@ -274,10 +287,10 @@ function createDesktopOrganizer(options) {
     const conflicts = [];
     for (const item of stowed) {
       const recorded = manifestByDestination.get(item.fullPath.toLowerCase());
-      const targetName = recorded && isWithin(desktopDirectory, path.resolve(recorded.originalPath))
-        ? path.basename(recorded.originalPath)
-        : item.fileName;
-      const destination = path.join(desktopDirectory, targetName);
+      const originalPath = recorded ? path.resolve(recorded.originalPath) : null;
+      const managedOriginal = originalPath && [desktopDirectory, ...additionalScanDirectories]
+        .some((directory) => isWithin(directory, originalPath));
+      const destination = managedOriginal ? originalPath : path.join(desktopDirectory, item.fileName);
       try {
         await fs.promises.access(destination);
         conflicts.push(targetName);

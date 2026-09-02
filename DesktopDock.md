@@ -488,8 +488,8 @@ pnpm run portable:win
 | 项目 | 值 |
 | --- | --- |
 | 文件名 | `DesktopDock.exe` |
-| 文件大小 | `98,272,557 bytes` |
-| SHA-256 | `C2355EFF704367432B3A062340379F6C22F5EAC03788FEACCF02C3B1E5A25122` |
+| 文件大小 | `98,271,012 bytes` |
+| SHA-256 | `5D9EA62C27BF1A59D050B695EA5D47A484446088E161520EC3AF7797DFBB3BFC` |
 | 自动测试 | 12 项全部通过 |
 | EXE 独立冒烟 | `passed=true` |
 
