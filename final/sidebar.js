@@ -20,6 +20,7 @@ const ICONS = Object.freeze({
 const COLORS = ['#1677ff', '#00a870', '#d97706', '#d84a4a', '#7c5ce7', '#168aad', '#697386', '#c2417d'];
 const TODO_COLORS = ['blue', 'green', 'amber', 'red', 'purple', 'teal', 'slate', 'pink'];
 const NOTE_COLORS = ['mint', 'sand', 'rose', 'blue'];
+const FONT_WEIGHTS = [{ value: 300, label: '细体' }, { value: 400, label: '常规' }, { value: 500, label: '中等' }, { value: 600, label: '半粗' }, { value: 700, label: '粗体' }];
 const WEATHER_LABELS = { 0: '晴', 1: '大部晴朗', 2: '多云', 3: '阴', 45: '有雾', 48: '冻雾', 51: '毛毛雨', 53: '毛毛雨', 55: '较强毛毛雨', 61: '小雨', 63: '中雨', 65: '大雨', 71: '小雪', 73: '中雪', 75: '大雪', 80: '阵雨', 81: '阵雨', 82: '强阵雨', 95: '雷雨' };
 const DEFAULT_ORDER = ['weather', 'todo', 'notes', 'files', 'clock', 'media', 'warehouse'];
 
@@ -27,7 +28,7 @@ const state = {
   loading: true, query: '', fileRootId: null,
   board: { shortcuts: [], categories: [] }, todos: [], files: [], roots: [], apps: [],
   weather: null, weatherError: null, media: { available: false },
-  settings: { theme: 'system', autoStowShortcuts: true, showTodo: true, showWeather: true, showMedia: true, showFiles: true },
+  settings: { theme: 'system', fontSize: 12, fontWeight: 400, autoStowShortcuts: true, showTodo: true, showWeather: true, showMedia: true, showFiles: true },
   notes: readStore('desktopdock.notes', []),
   cards: normalizeCards(readStore('desktopdock.cards', {})),
 };
@@ -59,6 +60,14 @@ const cardIdForCategory = (id) => `category:${id}`;
 const isCollapsed = (id) => state.cards.collapsed.includes(id);
 const isHidden = (id) => state.cards.hidden.includes(id);
 const shortcutIconSources = new Map();
+
+function applyAppearanceSettings(settings = state.settings) {
+  const fontSize = Math.max(10, Math.min(16, Number(settings.fontSize) || 12));
+  const fontWeight = FONT_WEIGHTS.some((option) => option.value === Number(settings.fontWeight)) ? Number(settings.fontWeight) : 400;
+  document.documentElement.dataset.theme = settings.theme;
+  document.documentElement.style.setProperty('--font-scale', (fontSize / 12).toFixed(4));
+  document.documentElement.style.setProperty('--font-weight', String(fontWeight));
+}
 
 let toastTimer;
 let dialogOpener = null;
@@ -94,10 +103,11 @@ function weatherCard() {
   if (state.weatherError) return card('weather', '天气', ICONS.cloud, `<div class="empty-state"><b>${esc(state.weatherError)}</b><button data-action="refresh-weather">重试</button></div>`, `<button data-action="refresh-weather" aria-label="刷新天气">${icon(ICONS.refresh)}</button>`);
   if (!state.weather) return card('weather', '天气', ICONS.cloud, '<div class="skeleton-lines"><i></i><i></i><i></i></div>');
   const current = state.weather.current;
-  const hourly = (state.weather.hourly || []).slice(0, 6);
+  const hourlyLimit = Number(state.settings.fontSize) >= 15 ? 3 : Number(state.settings.fontSize) >= 13 ? 4 : 6;
+  const hourly = (state.weather.hourly || []).slice(0, hourlyLimit);
   const body = `<div class="weather-main"><span class="weather-symbol">${icon(weatherGlyph(current.weatherCode))}</span><strong>${Math.round(current.temperature)}°</strong><span><b>${esc(WEATHER_LABELS[current.weatherCode] || '天气')}</b><small>体感 ${Math.round(current.apparentTemperature)}°</small></span></div>
     <div class="weather-facts"><span><small>湿度</small><b>${current.relativeHumidity}%</b></span><span><small>风力</small><b>${Math.round(current.windSpeed || 0)} km/h</b></span><span><small>降水</small><b>${current.precipitationProbability || 0}%</b></span></div>
-    <div class="hourly-row">${hourly.map((hour) => `<span><time>${new Date(hour.time).getHours()}:00</time>${icon(weatherGlyph(hour.weatherCode))}<b>${Math.round(hour.temperature)}°</b></span>`).join('')}</div>`;
+    <div class="hourly-row" style="--hour-count:${hourly.length}">${hourly.map((hour) => `<span><time>${new Date(hour.time).getHours()}:00</time>${icon(weatherGlyph(hour.weatherCode))}<b>${Math.round(hour.temperature)}°</b></span>`).join('')}</div>`;
   return card('weather', state.weather.locationName || state.weather.city || '天气', ICONS.cloud, body, `<button data-action="locate-weather" aria-label="使用当前位置">${icon(ICONS.reveal)}</button><button data-action="refresh-weather" aria-label="刷新天气">${icon(ICONS.refresh)}</button>`, 'weather-card');
 }
 
@@ -334,7 +344,7 @@ async function loadAll() {
       api?.todo?.list?.().then((items) => { state.todos = items; }),
       api?.apps?.list?.({ size: 150 }).then((items) => { state.apps = Array.isArray(items) ? items : items?.items || []; }).catch(() => {}),
     ]);
-    state.settings = { ...state.settings, ...settings }; document.documentElement.dataset.theme = state.settings.theme; status.textContent = '已就绪';
+    state.settings = { ...state.settings, ...settings }; applyAppearanceSettings(); status.textContent = '已就绪';
   } catch (error) { status.textContent = '读取失败'; showToast(error.message || '本地数据读取失败', 'error'); }
   state.loading = false; render(); void loadWeather(); void loadMedia();
 }
@@ -372,9 +382,21 @@ function cardMenu(cardId) {
 function settingsDialog() {
   const allIds = [...DEFAULT_ORDER, ...state.board.categories.map((entry) => cardIdForCategory(entry.id))];
   const name = (id) => id.startsWith('category:') ? state.board.categories.find((entry) => cardIdForCategory(entry.id) === id)?.name : ({ weather: '天气', todo: '待办', notes: '随记', files: '文件', clock: '时间', media: '媒体', warehouse: '桌面仓' })[id];
-  openDialog('面板设置', '主题、开机启动和卡片可见性。', `<div class="setting-list"><div class="setting-row"><span><b>主题</b><small>浅色、深色或跟随系统</small></span><button data-action="cycle-theme">${esc({ light: '浅色', dark: '深色', system: '跟随系统' }[state.settings.theme])}</button></div><div class="setting-row"><span><b>开机自动启动</b><small>便携 EXE 随 Windows 启动</small></span><button class="switch ${state.settings.autoStart ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStart)}" data-action="toggle-setting" data-setting="autoStart"><i></i></button></div><div class="setting-row"><span><b>自动收纳快捷方式</b><small>启动时收纳当前用户与公共桌面的快捷方式</small></span><button class="switch ${state.settings.autoStowShortcuts ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStowShortcuts)}" data-action="toggle-setting" data-setting="autoStowShortcuts"><i></i></button></div><div class="setting-row"><span><b>桌面收纳</b><small>立即移除桌面上的快捷方式，只保留系统图标</small></span><button data-action="stow-shortcuts">立即收纳</button></div><h3>卡片显示</h3>${allIds.map((id) => `<div class="setting-row"><span><b>${esc(name(id) || id)}</b></span><button class="switch ${!isHidden(id) ? 'on' : ''}" role="switch" aria-checked="${!isHidden(id)}" data-action="toggle-card-visible" data-card-id="${esc(id)}"><i></i></button></div>`).join('')}</div>`, '<button data-action="export-settings">导出配置</button><button data-action="quit" class="danger">退出</button><button data-action="close-dialog">完成</button>');
+  const fontWeightOptions = FONT_WEIGHTS.map((option) => `<option value="${option.value}" ${Number(state.settings.fontWeight) === option.value ? 'selected' : ''}>${option.label} · ${option.value}</option>`).join('');
+  const body = `<div class="setting-list">
+    <div class="setting-row"><span><b>主题</b><small>浅色、深色或跟随系统</small></span><button data-action="cycle-theme">${esc({ light: '浅色', dark: '深色', system: '跟随系统' }[state.settings.theme])}</button></div>
+    <h3>文字</h3>
+    <div class="setting-row typography-setting"><span><b>字体大小</b><small>整体文字大小，图标尺寸保持不变</small></span><label class="font-size-control"><input type="range" min="10" max="16" step="1" value="${Number(state.settings.fontSize) || 12}" data-action="set-font-size" data-preview-setting="fontSize" aria-label="字体大小"><output>${Number(state.settings.fontSize) || 12}px</output></label></div>
+    <div class="setting-row typography-setting"><span><b>字体粗细</b><small>使用苹方字体的可用字重</small></span><select data-action="set-font-weight" aria-label="字体粗细">${fontWeightOptions}</select></div>
+    <h3>常规</h3>
+    <div class="setting-row"><span><b>开机自动启动</b><small>便携 EXE 随 Windows 启动</small></span><button class="switch ${state.settings.autoStart ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStart)}" data-action="toggle-setting" data-setting="autoStart"><i></i></button></div>
+    <div class="setting-row"><span><b>自动收纳快捷方式</b><small>启动时收纳当前用户与公共桌面的快捷方式</small></span><button class="switch ${state.settings.autoStowShortcuts ? 'on' : ''}" role="switch" aria-checked="${Boolean(state.settings.autoStowShortcuts)}" data-action="toggle-setting" data-setting="autoStowShortcuts"><i></i></button></div>
+    <div class="setting-row"><span><b>桌面收纳</b><small>立即移除桌面上的快捷方式，只保留系统图标</small></span><button data-action="stow-shortcuts">立即收纳</button></div>
+    <h3>卡片显示</h3>${allIds.map((id) => `<div class="setting-row"><span><b>${esc(name(id) || id)}</b></span><button class="switch ${!isHidden(id) ? 'on' : ''}" role="switch" aria-checked="${!isHidden(id)}" data-action="toggle-card-visible" data-card-id="${esc(id)}"><i></i></button></div>`).join('')}
+  </div>`;
+  openDialog('面板设置', '主题、文字、开机启动和卡片可见性。', body, '<button data-action="export-settings">导出配置</button><button data-action="quit" class="danger">退出</button><button data-action="close-dialog">完成</button>');
 }
-async function saveSetting(key, value) { const previous = state.settings[key]; state.settings[key] = value; const result = await api?.settings?.set?.(key, value); if (!resultOk(result)) { state.settings[key] = previous; showToast(result.error || '设置保存失败', 'error'); } document.documentElement.dataset.theme = state.settings.theme; render(); }
+async function saveSetting(key, value) { const previous = state.settings[key]; state.settings[key] = value; const result = await api?.settings?.set?.(key, value); if (!resultOk(result)) { state.settings[key] = previous; showToast(result.error || '设置保存失败', 'error'); } applyAppearanceSettings(); render(); }
 async function assignShortcut(shortcutId, categoryId) { const result = await api?.board?.assign?.(shortcutId, categoryId || null); if (!resultOk(result)) return showToast(result.error || '归类失败', 'error'); await loadBoard(); render(); showToast(categoryId ? '已移动到分类' : '已移回桌面仓'); }
 async function stowDesktopShortcuts() { const result = await api?.desktop?.stowShortcuts?.(); if (!resultOk(result)) return showToast(result?.error || `收纳完成 ${result?.stowed || 0} 个，${result?.failed?.length || 0} 个失败`, 'error'); await loadBoard(); render(); showToast(`已收纳 ${result?.stowed || 0} 个桌面快捷方式`); }
 async function droppedPaths(event) { return [...(event.dataTransfer?.files || [])].map((file) => { try { return api?.files?.pathForFile?.(file) || file.path || ''; } catch { return ''; } }).filter(Boolean); }
@@ -424,6 +446,8 @@ async function handleAction(button) {
   if (action === 'refresh-weather') return loadWeather(true);
   if (action === 'locate-weather') { if (!navigator.geolocation) return showToast('系统未提供位置服务', 'error'); showToast('正在读取当前位置…'); return navigator.geolocation.getCurrentPosition(async (position) => { try { state.weather = await api.weather.getByCoordinates(position.coords.latitude, position.coords.longitude, true); render(); showToast('已切换到当前位置'); } catch (error) { showToast(error.message || '定位天气失败', 'error'); } }, () => showToast('请在 Windows 设置中允许定位', 'error'), { timeout: 8000, maximumAge: 600000 }); }
   if (action === 'refresh-media') return loadMedia();
+  if (action === 'set-font-size') { await saveSetting('fontSize', Number(button.value)); settingsDialog(); return; }
+  if (action === 'set-font-weight') { await saveSetting('fontWeight', Number(button.value)); settingsDialog(); return; }
   if (action === 'toggle-setting') return saveSetting(button.dataset.setting, !state.settings[button.dataset.setting]);
   if (action === 'cycle-theme') { const values = ['system', 'light', 'dark']; const next = values[(values.indexOf(state.settings.theme) + 1) % values.length]; await saveSetting('theme', next); settingsDialog(); return; }
   if (action === 'export-settings') { const result = await api?.settings?.export?.(); if (resultOk(result)) showToast('配置已导出'); return; }
@@ -432,6 +456,7 @@ async function handleAction(button) {
 
 document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); const launcherShortcut = event.target.closest('.category-dialog [data-shortcut]'); if (launcherShortcut && !button) void api?.desktop?.launchShortcut?.(launcherShortcut.dataset.shortcut).then(() => showToast(`已启动 ${launcherShortcut.querySelector('.shortcut-name')?.textContent || '应用'}`)); const categoryCard = event.target.closest('[data-category-card]'); if (categoryCard && !event.target.closest('button, select, input, textarea, [data-shortcut]')) void categoryPanelDialog(categoryCard.dataset.categoryCard || ''); });
 document.addEventListener('change', (event) => { const control = event.target.closest('[data-action]'); if (control) void handleAction(control); });
+document.addEventListener('input', (event) => { const control = event.target.closest('[data-preview-setting="fontSize"]'); if (!control) return; control.nextElementSibling.textContent = `${control.value}px`; applyAppearanceSettings({ ...state.settings, fontSize: Number(control.value) }); });
 search.addEventListener('input', () => { state.query = search.value.trim().toLocaleLowerCase('zh-CN'); renderSearch(); });
 search.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); searchResults.querySelector('button')?.focus(); } if (event.key === 'Escape') { search.value = ''; state.query = ''; renderSearch(); } });
 searchResults.addEventListener('keydown', (event) => { const buttons = [...searchResults.querySelectorAll('button')]; const index = buttons.indexOf(document.activeElement); if (event.key === 'ArrowDown') { event.preventDefault(); buttons[Math.min(buttons.length - 1, index + 1)]?.focus(); } if (event.key === 'ArrowUp') { event.preventDefault(); index <= 0 ? search.focus() : buttons[index - 1]?.focus(); } if (event.key === 'Escape') search.focus(); });
@@ -508,7 +533,7 @@ document.addEventListener('contextmenu', (event) => {
 });
 
 api?.onShowSearch?.(() => { search.focus(); search.select(); });
-api?.settings?.onChanged?.((settings) => { state.settings = { ...state.settings, ...settings }; render(); });
+api?.settings?.onChanged?.((settings) => { state.settings = { ...state.settings, ...settings }; applyAppearanceSettings(); render(); });
 window.addEventListener('resize', () => render());
 setInterval(() => { const node = document.querySelector('#dockClock'); if (node) node.textContent = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()); }, 30_000);
 void loadAll();

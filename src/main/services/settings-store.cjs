@@ -17,6 +17,8 @@ const DEFAULTS = Object.freeze({
   hotkeyMain: 'Alt+D',
   searchResultCount: 10,
   weatherCity: '深圳',
+  fontSize: 12,
+  fontWeight: 400,
   autoStowShortcuts: true,
   fileLayout: 'grid',
   weatherLayout: 'standard',
@@ -44,6 +46,10 @@ function validateSetting(key, value) {
     throw new Error('天气布局设置无效');
   } else if (key === 'searchResultCount' && (!Number.isInteger(value) || value < 5 || value > 20)) {
     throw new Error('搜索结果数量应在 5–20 之间');
+  } else if (key === 'fontSize' && (!Number.isInteger(value) || value < 10 || value > 16)) {
+    throw new Error('字体大小应在 10–16 之间');
+  } else if (key === 'fontWeight' && ![300, 400, 500, 600, 700].includes(value)) {
+    throw new Error('字体粗细设置无效');
   } else if (key === 'weatherCity' && (typeof value !== 'string' || !value.trim() || value.trim().length > 80 || /[\r\n\u0000]/u.test(value))) {
     throw new Error('天气城市无效');
   } else if (['hotkeySearch', 'hotkeyMain'].includes(key)) {

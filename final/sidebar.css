@@ -16,8 +16,20 @@
   --radius: 6px;
   --gap: 4px;
   --motion: 150ms cubic-bezier(.2, 0, 0, 1);
-  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  font-size: 12px;
+  --font-scale: 1;
+  --font-weight: 400;
+  --font-2xs: calc(9px * var(--font-scale));
+  --font-xs: calc(10px * var(--font-scale));
+  --font-sm: calc(11px * var(--font-scale));
+  --font-md: calc(12px * var(--font-scale));
+  --font-lg: calc(14px * var(--font-scale));
+  --font-xl: calc(18px * var(--font-scale));
+  --font-display: calc(25px * var(--font-scale));
+  --font-emphasis-weight: min(700, calc(var(--font-weight) + 180));
+  --font-display-weight: min(700, calc(var(--font-weight) + 240));
+  font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-size: var(--font-md);
+  font-weight: var(--font-weight);
 }
 
 :root[data-theme="light"] {
@@ -56,7 +68,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: color-mix(in srgb, var(--text-3) 58%, transparent); background-clip: padding-box; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.fluent-icon { display: inline-grid; place-items: center; font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-style: normal; }
+.fluent-icon { --font-scale: 1; display: inline-grid; place-items: center; font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-style: normal; font-weight: 400; }
 
 .dock-shell {
   display: grid;
@@ -89,10 +101,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .dock-brand-mark { width: 21px; height: 21px; flex: 0 0 auto; background: url("../assets/DesktopDock.png") center / contain no-repeat; }
 .search-glyph { color: var(--accent); font-size: 13px; }
-.dock-searchbar input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: 12px; user-select: text; -webkit-app-region: no-drag; }
+.dock-searchbar input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--font-md); user-select: text; -webkit-app-region: no-drag; }
 .dock-searchbar input::placeholder { color: var(--text-3); opacity: 1; }
 .dock-searchbar input::-webkit-search-cancel-button { display: none; }
-.dock-state { max-width: 52px; overflow: hidden; color: var(--text-3); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dock-state { max-width: 52px; overflow: hidden; color: var(--text-3); font-size: var(--font-xs); text-overflow: ellipsis; white-space: nowrap; }
 .top-action { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; -webkit-app-region: no-drag; }
 .top-action:hover { background: var(--card-hover); }
 
@@ -126,7 +138,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .is-collapsed .card-header { border-bottom: 0; }
 .card-title { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .card-title > .fluent-icon { color: var(--accent); font-size: 11px; }
-.card-title h2 { min-width: 0; margin: 0; overflow: hidden; font-size: 12px; font-weight: 620; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
+.card-title h2 { min-width: 0; margin: 0; overflow: hidden; font-size: var(--font-md); font-weight: var(--font-emphasis-weight); line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; flex: 0 0 auto; align-items: center; }
 .card-actions button { display: grid; width: 26px; height: 26px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: var(--text-2); background: transparent; font-size: 11px; }
 .card-actions button:hover { color: var(--text); background: var(--card-hover); }
@@ -139,22 +151,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .clock-card .card-body { padding: 7px 9px 9px; }
 .clock-block { display: flex; align-items: flex-end; justify-content: space-between; gap: 5px; }
-.clock-block strong { font-size: 18px; font-weight: 680; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.clock-block span { color: var(--text-3); font-size: 10px; white-space: nowrap; }
+.clock-block strong { font-size: var(--font-xl); font-weight: var(--font-display-weight); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.clock-block span { color: var(--text-3); font-size: var(--font-xs); white-space: nowrap; }
 
 .weather-main { display: grid; grid-template-columns: 25px auto minmax(0, 1fr); align-items: center; gap: 5px; }
 .weather-symbol { color: #ffc44d; font-size: 20px; }
-.weather-main > strong { font-size: 25px; font-weight: 680; line-height: 1; letter-spacing: -.04em; }
+.weather-main > strong { font-size: var(--font-display); font-weight: var(--font-display-weight); line-height: 1; letter-spacing: -.04em; }
 .weather-main > span:last-child { display: flex; min-width: 0; flex-direction: column; }
-.weather-main b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.weather-main small { margin-top: 2px; color: var(--text-3); font-size: 10px; }
+.weather-main b { overflow: hidden; font-size: var(--font-xs); text-overflow: ellipsis; white-space: nowrap; }
+.weather-main small { margin-top: 2px; color: var(--text-3); font-size: var(--font-xs); }
 .weather-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 8px 0 7px; padding: 6px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .weather-facts span { display: flex; min-width: 0; flex-direction: column; text-align: center; }
-.weather-facts small { color: var(--text-3); font-size: 9px; }
-.weather-facts b { margin-top: 2px; overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.hourly-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+.weather-facts small { color: var(--text-3); font-size: var(--font-2xs); }
+.weather-facts b { margin-top: 2px; overflow: hidden; font-size: var(--font-xs); font-weight: var(--font-emphasis-weight); text-overflow: ellipsis; white-space: nowrap; }
+.hourly-row { display: grid; grid-template-columns: repeat(var(--hour-count, 6), minmax(0, 1fr)); gap: 2px; }
 .hourly-row span { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 2px; padding: 3px 1px; border-radius: 3px; background: color-mix(in srgb, var(--card-strong) 52%, transparent); }
-.hourly-row time, .hourly-row b { font-size: 9px; font-variant-numeric: tabular-nums; }
+.hourly-row time, .hourly-row b { font-size: var(--font-2xs); font-variant-numeric: tabular-nums; }
 .hourly-row time { color: var(--text-3); }
 .hourly-row .fluent-icon { color: #ffc44d; font-size: 10px; }
 
@@ -307,6 +319,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .setting-row { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .setting-row > span { display: flex; min-width: 0; flex-direction: column; }
 .setting-row b { font-size: 11px; } .setting-row small { margin-top: 2px; color: var(--text-3); font-size: 10px; }
+.typography-setting { min-height: 52px; }
+.font-size-control { display: grid; width: 142px; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; gap: 7px; }
+.font-size-control input { width: 100%; accent-color: var(--accent); }
+.font-size-control output { color: var(--text-2); font-size: var(--font-xs); font-variant-numeric: tabular-nums; text-align: right; }
+.typography-setting select { width: 112px; height: 31px; flex: 0 0 auto; padding: 0 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); background: var(--card); }
 .switch { position: relative; width: 40px; height: 24px; flex: 0 0 auto; padding: 0; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--card); }
 .switch i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-3); transition: left var(--motion), background-color var(--motion); }
 .switch.on { border-color: var(--accent); background: var(--accent); } .switch.on i { left: 19px; background: #fff; }
@@ -314,6 +331,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .dock-toast { position: fixed; z-index: 120; right: 9px; bottom: 10px; max-width: calc(100% - 18px); padding: 8px 11px; transform: translateY(8px); border: 1px solid var(--line-strong); border-radius: 5px; opacity: 0; color: var(--text); background: var(--card-strong); box-shadow: 0 8px 22px rgba(0,0,0,.18); font-size: 10px; pointer-events: none; transition: opacity var(--motion), transform var(--motion); }
 .dock-toast.visible { transform: translateY(0); opacity: 1; }
 .dock-toast.error { color: var(--danger); }
+
+/* Text roles scale independently from the fixed-size Fluent and application icons. */
+.segmented span, .note-tabs span, .note-tabs button, .todo-copy small, .note-strip small, .media-copy span,
+.shortcut-name, .manage-link, .root-list button span, .file-list b, .empty-state, .search-result-list small,
+.dialog-header p, .dialog-footer button, .dialog-form button, .action-list button, .setting-row > button:not(.switch),
+.dialog-form legend, .todo-manager-row button, .manager-summary, .manager-toolbar button, .manager-copy b,
+.manager-row select, .category-launcher-grid .shortcut-name, .setting-list h3, .setting-row small, .dock-toast {
+  font-size: var(--font-xs);
+}
+.todo-quick button, .note-add, .todo-copy b, .note-strip b, .media-copy b, .search-result-list b,
+.dialog-form label, .todo-manager-row label span, .setting-row b {
+  font-size: var(--font-sm);
+}
+.dialog-header h2 { font-size: var(--font-lg); }
+.file-list small, .manager-copy small { font-size: var(--font-2xs); }
+body b, body strong, body h2, body h3, body mark { font-weight: var(--font-emphasis-weight); }
+body .clock-block strong, body .weather-main > strong { font-weight: var(--font-display-weight); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 519px) {

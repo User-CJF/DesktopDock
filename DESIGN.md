@@ -14,23 +14,23 @@ colors:
   border-light: "rgba(82, 117, 132, 0.2)"
 typography:
   display:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontFamily: "PingFang SC, Microsoft YaHei UI, Microsoft YaHei, Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "25px"
     fontWeight: 680
     lineHeight: 1
     letterSpacing: "0"
   title:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontFamily: "PingFang SC, Microsoft YaHei UI, Microsoft YaHei, Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "12px"
     fontWeight: 620
     lineHeight: 1.2
   body:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontFamily: "PingFang SC, Microsoft YaHei UI, Microsoft YaHei, Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "11px"
     fontWeight: 400
     lineHeight: 1.4
   label:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, sans-serif"
+    fontFamily: "PingFang SC, Microsoft YaHei UI, Microsoft YaHei, Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "10px"
     fontWeight: 500
     lineHeight: 1.2
@@ -87,11 +87,11 @@ The palette is restrained: cool translucent surfaces, one blue interaction accen
 
 ## Typography
 
-**Display Font:** Segoe UI Variable Text (with Segoe UI and Microsoft YaHei UI fallbacks)
-**Body Font:** Segoe UI Variable Text (with Segoe UI and Microsoft YaHei UI fallbacks)
+**Display Font:** PingFang SC (with Microsoft YaHei UI, Microsoft YaHei, Segoe UI Variable Text, and Segoe UI fallbacks)
+**Body Font:** PingFang SC (with the same Windows-safe fallback chain)
 **Label/Mono Font:** system UI numerals with tabular figures where time or weather data changes.
 
-**Character:** Native, compact, and information-first. Large type is reserved for temperature and time; application labels stay at the requested 10px floor so four-column icon grids remain stable.
+**Character:** Native, compact, and information-first. Large type is reserved for temperature and time. Users can select a 10–16px global base size and five weights from 300–700; text roles scale proportionally while Fluent and application icons retain fixed dimensions.
 
 ### Hierarchy
 - **Display** (680, 18–25px, 1): weather temperature and compact clock.

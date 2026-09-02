@@ -15,9 +15,15 @@ test('persists validated settings and imports an exported config', async (t) => 
   store.set('theme', 'dark');
   store.set('searchResultCount', 15);
   store.set('weatherCity', '上海');
+  store.set('fontSize', 14);
+  store.set('fontWeight', 500);
   assert.equal(store.get().theme, 'dark');
+  assert.equal(store.get().fontSize, 14);
+  assert.equal(store.get().fontWeight, 500);
   assert.throws(() => store.set('accentColor', 'red'), /无效/);
   assert.throws(() => store.set('weatherCity', ''), /无效/);
+  assert.throws(() => store.set('fontSize', 18), /10–16/);
+  assert.throws(() => store.set('fontWeight', 450), /无效/);
   await store.exportTo(configPath);
   store.set('theme', 'light');
   assert.equal((await store.importFrom(configPath)).settings.theme, 'dark');

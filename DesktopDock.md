@@ -104,7 +104,7 @@ Windows 版通过受控 Win32 调用，将 Electron 窗口挂接到 Explorer 的
 - 应用品牌图标使用用户指定的蓝色三层图形。
 - 使用 Windows 11 Acrylic/Mica 半透明材质；深色卡片为 `rgba(31,43,47,.78)`，浅色卡片为 `rgba(235,247,252,.82)`，背景模糊 22px。
 - 主强调色为 Windows 蓝，分类使用轻量识别色，不使用装饰性渐变文字。
-- 字体优先使用 Segoe UI Variable、Segoe UI、Microsoft YaHei UI。
+- 界面默认使用苹方 `PingFang SC`，未安装时依次回退到 Microsoft YaHei UI、Microsoft YaHei、Segoe UI Variable Text 和 Segoe UI；设置中可选择 10–16px 全局字号和 300–700 五档字重。
 - 功能图标统一使用 Segoe Fluent Icons；应用图标来自 Windows Shell。
 - 键盘焦点使用清晰的蓝色外框。
 - 支持 `prefers-reduced-motion`。
@@ -307,6 +307,8 @@ Windows 版通过受控 Win32 调用，将 Electron 窗口挂接到 Explorer 的
 - 开机自动启动；
 - 自动收纳桌面快捷方式；
 - 深色、浅色、跟随系统；
+- 10–16px 全局字体大小；
+- 细体、常规、中等、半粗和粗体五档字体粗细；
 - 逐张显示或隐藏天气、待办、随记、文件、时间、媒体、桌面仓和自建分类；
 - 导出配置和退出程序。
 
@@ -432,7 +434,7 @@ pnpm run portable:win
 - 桌面仓、文件、待办、随记、天气、时间、媒体和面板设置卡片；
 - 分类与待办 CRUD；
 - 卡片跨列排序、中间区域投放、折叠、隐藏和自由宽高持久化；
-- 设置持久化；
+- 主题、字号和字重设置及其持久化；
 - 图标和文件接口不向渲染进程泄露完整路径。
 
 冒烟模式不会移动真实桌面快捷方式。
@@ -491,8 +493,8 @@ pnpm run portable:win
 | 项目 | 值 |
 | --- | --- |
 | 文件名 | `DesktopDock.exe` |
-| 文件大小 | `98,274,702 bytes` |
-| SHA-256 | `1D03600922D9C65C95ABAF1BDF70DD6E9457F73998C48E130C492E5988727E79` |
+| 文件大小 | `98,275,778 bytes` |
+| SHA-256 | `B14249EE0F1B83E478F5CE50B3C6435B7BD0C8FB0A534C8503B734E7199216F1` |
 | 自动测试 | 12 项全部通过 |
 | EXE 独立冒烟 | `passed=true` |
 

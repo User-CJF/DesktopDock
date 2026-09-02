@@ -292,6 +292,23 @@ async function runSidebarSmokeTest(window) {
       document.querySelector('[data-action="close-dialog"]')?.click();
       document.querySelector('[data-action="dashboard-settings"]')?.click();
       const settingsView = Boolean(document.querySelector('.setting-list'));
+      const fontSizeControl = document.querySelector('[data-action="set-font-size"]');
+      const fontWeightControl = document.querySelector('[data-action="set-font-weight"]');
+      if (fontSizeControl && fontWeightControl) {
+        fontSizeControl.value = '16';
+        fontSizeControl.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const nextWeightControl = document.querySelector('[data-action="set-font-weight"]');
+        nextWeightControl.value = '700';
+        nextWeightControl.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      const typographySettings = (await window.desktopDock.settings.get()).fontSize === 16
+        && (await window.desktopDock.settings.get()).fontWeight === 700
+        && getComputedStyle(document.documentElement).getPropertyValue('--font-scale').trim() === '1.3333'
+        && getComputedStyle(document.documentElement).getPropertyValue('--font-weight').trim() === '700';
+      await window.desktopDock.settings.set('fontSize', settings.fontSize);
+      await window.desktopDock.settings.set('fontWeight', settings.fontWeight);
       document.querySelector('[data-action="close-dialog"]')?.click();
       const searchInput = document.querySelector('#dockSearch');
       searchInput.value = 'test';
@@ -321,6 +338,7 @@ async function runSidebarSmokeTest(window) {
         cardResizeHandles: [...document.querySelectorAll('.bento-card:not(.is-collapsed)')].every((card) => card.querySelector('[data-card-resize]')),
         searchView,
         settingsView,
+        typographySettings,
         categoryEditor,
         rootsBridge: Array.isArray(roots),
       };
