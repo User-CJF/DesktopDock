@@ -62,8 +62,9 @@ function showToast(message, tone = 'success') {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.className = 'dock-toast'; }, 2200);
 }
 
-function openDialog(title, description, body, footer = '') {
+function openDialog(title, description, body, footer = '', variant = '') {
   dialogOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  dialog.className = `dock-dialog ${variant}`.trim();
   dialog.innerHTML = `<header class="dialog-header"><div><h2 id="dockDialogTitle">${esc(title)}</h2>${description ? `<p id="dockDialogDescription">${esc(description)}</p>` : '<p id="dockDialogDescription" class="sr-only">桌面舱对话框</p>'}</div><button data-action="close-dialog" aria-label="关闭">${icon(ICONS.close)}</button></header><div class="dialog-body">${body}</div>${footer ? `<footer class="dialog-footer">${footer}</footer>` : ''}`;
   dialogLayer.hidden = false; document.querySelector('#desktopApp').inert = true;
   setTimeout(() => dialog.querySelector('input, button, select, textarea')?.focus(), 20);
@@ -79,7 +80,8 @@ function cardHeader(id, title, glyph, actions = '') {
 function card(id, title, glyph, body, actions = '', extra = '') {
   if (isHidden(id)) return '';
   const size = state.cards.sizes[id] || 'normal';
-  return `<article class="bento-card size-${esc(size)} ${isCollapsed(id) ? 'is-collapsed' : ''} ${extra}" data-card-id="${esc(id)}">${cardHeader(id, title, glyph, actions)}<div class="card-body">${body}</div></article>`;
+  const categoryAttribute = id === 'warehouse' ? ' data-category-card=""' : id.startsWith('category:') ? ` data-category-card="${esc(id.slice(9))}"` : '';
+  return `<article class="bento-card size-${esc(size)} ${isCollapsed(id) ? 'is-collapsed' : ''} ${extra}" data-card-id="${esc(id)}"${categoryAttribute}>${cardHeader(id, title, glyph, actions)}<div class="card-body">${body}</div></article>`;
 }
 
 function weatherGlyph(code) { return Number(code) >= 51 ? ICONS.rain : Number(code) >= 2 ? ICONS.cloud : ICONS.sun; }
@@ -150,6 +152,18 @@ function shortcutManagerDialog(categoryId = '') {
   const rows = items.map((item) => `<div class="manager-row"><span class="manager-icon" data-shortcut-icon="${esc(item.id)}">${icon(ICONS.folder)}</span><span class="manager-copy"><b>${esc(item.name)}</b><small>${item.location === 'public' ? '公共桌面' : item.location === 'desktop' ? '当前桌面' : '已收纳'}</small></span><select data-action="assign-select" data-shortcut-id="${esc(item.id)}" data-manager-category="${esc(categoryId)}" aria-label="为 ${esc(item.name)} 选择分类">${categoryOptions.replace(`value="${esc(item.categoryId || '')}"`, `value="${esc(item.categoryId || '')}" selected`)}</select><button data-action="move-shortcut" data-shortcut-id="${esc(item.id)}" aria-label="移动 ${esc(item.name)}">${icon(ICONS.more)}</button></div>`).join('');
   const body = `<div class="manager-toolbar"><span class="manager-summary">共 ${items.length} 个快捷方式。选择分类后立即保存，也可以拖回桌面仓。</span><button data-action="new-category-from-manager">${icon(ICONS.add)} 新建分类</button></div><div class="manager-list">${rows || '<div class="empty-state">这个区域还没有快捷方式</div>'}</div>`;
   openDialog('管理全部快捷方式', '完整显示当前区域的快捷方式，并可逐项分配分类。', body, '<button data-action="close-dialog">完成</button>');
+  void loadShortcutIcons();
+}
+
+function categoryPanelDialog(categoryId = '') {
+  const category = state.board.categories.find((entry) => entry.id === categoryId);
+  const title = category?.name || '桌面仓';
+  const items = state.board.shortcuts.filter((item) => (item.categoryId || '') === categoryId);
+  const grid = items.map(shortcutTile).join('') || '<div class="empty-state">这个分类还没有快捷方式</div>';
+  const addAction = `<button data-action="import-shortcuts" data-category-id="${esc(categoryId)}">${icon(ICONS.add)} 添加快捷方式</button>`;
+  const manageAction = `<button data-action="manage-category" data-category-id="${esc(categoryId)}">${icon(ICONS.settings)} 管理全部</button>`;
+  const editAction = category ? `<button data-action="edit-category" data-category-id="${esc(category.id)}">${icon(ICONS.edit)} 编辑分类</button>` : '';
+  openDialog(title, `${items.length} 个快捷方式，点击图标即可启动。`, `<div class="category-launcher"><div class="category-launcher-grid">${grid}</div></div>`, `${addAction}${manageAction}${editAction}<button data-action="close-dialog">关闭</button>`, 'category-dialog');
   void loadShortcutIcons();
 }
 
@@ -370,7 +384,7 @@ async function handleAction(button) {
   if (action === 'quit') return api?.window?.quit?.();
 }
 
-document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); });
+document.addEventListener('click', (event) => { const button = event.target.closest('button[data-action]'); if (button) void handleAction(button); const media = event.target.closest('[data-media]'); if (media) void api?.media?.control?.(media.dataset.media).then(() => setTimeout(loadMedia, 350)); const categoryCard = event.target.closest('[data-category-card]'); if (categoryCard && !event.target.closest('button, select, input, textarea, [data-shortcut]')) void categoryPanelDialog(categoryCard.dataset.categoryCard || ''); });
 document.addEventListener('change', (event) => { const control = event.target.closest('[data-action]'); if (control) void handleAction(control); });
 search.addEventListener('input', () => { state.query = search.value.trim().toLocaleLowerCase('zh-CN'); renderSearch(); });
 search.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); searchResults.querySelector('button')?.focus(); } if (event.key === 'Escape') { search.value = ''; state.query = ''; renderSearch(); } });
